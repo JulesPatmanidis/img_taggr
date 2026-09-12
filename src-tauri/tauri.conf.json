@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "img-taggr",
+  "version": "0.1.0",
+  "identifier": "dev.imgtaggr.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "img-taggr",
+        "width": 1360,
+        "height": 860,
+        "minWidth": 940,
+        "minHeight": 620
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' ipc: http://ipc.localhost https://tile.openstreetmap.org https://*.tile.openstreetmap.org"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.png"
+    ],
+    "category": "Photography",
+    "shortDescription": "Offline photo time & location metadata editor",
+    "longDescription": "Pick photos from local storage and edit their capture time, date and GPS location interactively on a map and on a day timeline. Everything runs offline; only map tiles are fetched from the network."
+  }
+}

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>img-taggr</title>
+  <link rel="stylesheet" href="vendor/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="bar">
+      <div class="brand"><span class="dot"></span>img-taggr</div>
+      <button id="btnOpen" class="btn">Open folder</button>
+      <div id="folderLabel" class="folder muted"></div>
+      <div class="spacer"></div>
+      <div class="tabs" id="viewTabs">
+        <button class="tab on" data-view="map">Map</button>
+        <button class="tab" data-view="time">Timeline</button>
+      </div>
+      <div class="spacer"></div>
+      <button id="btnUndo" class="btn" disabled title="Undo — Ctrl+Z">Undo</button>
+      <button id="btnSave" class="btn primary" disabled>Save</button>
+    </header>
+
+    <main>
+      <aside id="strip" class="strip">
+        <div class="stripHead">
+          <span id="stripCount" class="muted">No photos</span>
+          <button id="btnSelectAll" class="link">Select all</button>
+        </div>
+        <div id="stripList" class="stripList"></div>
+      </aside>
+      <div id="stripResize" class="resizer" title="Drag to resize"></div>
+
+      <section id="stage">
+        <!-- ── Map view ─────────────────────────────────────────── -->
+        <div id="mapView" class="view">
+          <div id="map"></div>
+          <div class="overlay tl">
+            <div class="hint" id="mapHint">Click the map to place the selected photos.</div>
+          </div>
+          <div class="overlay bl tools">
+            <button id="btnInterp" class="btn sm" disabled
+              title="Position un-placed photos along the route between the placed ones, by time">
+              Interpolate route
+            </button>
+            <button id="btnClearGps" class="btn sm" disabled>Clear location</button>
+            <label class="chk"><input type="checkbox" id="chkPath" checked /> Route</label>
+          </div>
+        </div>
+
+        <!-- ── Timeline view ────────────────────────────────────── -->
+        <div id="timeView" class="view hidden">
+          <div class="overlay br">
+            <div class="hint" id="timeHint">Drag a photo along its day to set the time. With several selected, they all shift together.</div>
+          </div>
+          <div class="trayWrap" id="trayWrap">
+            <div class="trayLabel muted">
+              No date <span id="trayCount"></span>
+              <button id="btnSeedDates" class="link" title="Set capture time from each file's modification date">Use file dates</button>
+            </div>
+            <div class="tray" id="tray"></div>
+          </div>
+          <div class="days" id="days"></div>
+          <div class="overlay bl tools">
+            <div class="shift" id="shiftBar">
+              <span class="muted">Shift selection</span>
+              <button class="btn sm" data-shift="-3600">−1h</button>
+              <button class="btn sm" data-shift="-60">−1m</button>
+              <button class="btn sm" data-shift="60">+1m</button>
+              <button class="btn sm" data-shift="3600">+1h</button>
+            </div>
+            <div class="shift" id="zoomBar">
+              <span class="muted">Zoom</span>
+              <button class="btn sm on" data-zoom="1">Day</button>
+              <button class="btn sm" data-zoom="4">6h</button>
+              <button class="btn sm" data-zoom="12">2h</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="inspector" class="inspector">
+      <div class="insLeft">
+        <span id="selLabel" class="selLabel">Nothing selected</span>
+        <span id="editLabel" class="pill hidden"></span>
+      </div>
+      <div class="fields">
+        <label class="fld"><span>Date</span><input id="fDate" type="date" disabled /></label>
+        <label class="fld"><span>Time</span><input id="fTime" type="time" step="1" disabled /></label>
+        <label class="fld sm"><span>UTC</span><input id="fTz" type="text" placeholder="+02:00" disabled /></label>
+        <span class="sep"></span>
+        <label class="fld"><span>Latitude</span><input id="fLat" type="text" placeholder="—" disabled /></label>
+        <label class="fld"><span>Longitude</span><input id="fLon" type="text" placeholder="—" disabled /></label>
+      </div>
+      <div class="insRight">
+        <button id="btnRevert" class="btn sm" disabled>Revert</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ── Save sheet ─────────────────────────────────────────────── -->
+  <div id="modal" class="modalWrap hidden">
+    <div class="modal">
+      <h2>Save changes</h2>
+      <p class="muted" id="modalSummary"></p>
+      <div class="radios" id="modeRadios">
+        <label class="radio">
+          <input type="radio" name="mode" value="copy" checked />
+          <div>
+            <b>Write copies</b>
+            <span class="muted">Originals untouched; tagged files go to a new folder.</span>
+          </div>
+        </label>
+        <label class="radio">
+          <input type="radio" name="mode" value="backup" />
+          <div>
+            <b>Edit in place, keep backups</b>
+            <span class="muted">Each original is preserved as <code>name.ext_original</code>.</span>
+          </div>
+        </label>
+        <label class="radio">
+          <input type="radio" name="mode" value="inplace" />
+          <div>
+            <b>Edit in place</b>
+            <span class="muted">Overwrites originals. No undo once written.</span>
+          </div>
+        </label>
+      </div>
+      <label class="fld wide" id="outRow">
+        <span>Output folder</span>
+        <div class="row">
+          <input id="fOut" type="text" />
+          <button id="btnPickOut" class="btn sm">Browse</button>
+        </div>
+      </label>
+      <div class="modalBtns">
+        <button id="btnCancel" class="btn">Cancel</button>
+        <button id="btnConfirm" class="btn primary">Write files</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="vendor/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

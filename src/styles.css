@@ -1,0 +1,320 @@
+/* img-taggr — minimal dark shell.
+   One accent (blue) for selection, one (amber) for unsaved edits. Nothing else
+   is allowed to be colourful, so the photos stay the loudest thing on screen. */
+
+:root {
+  --bg:        #0c0c0e;
+  --panel:     #131316;
+  --panel-2:   #1a1a1f;
+  --line:      #26262d;
+  --line-2:    #34343d;
+  --text:      #e9e9ec;
+  --muted:     #85858f;
+  --accent:    #7aa2f7;
+  --accent-dim:#2c3a5c;
+  --edited:    #e0af68;
+  --danger:    #f7768e;
+  --radius: 7px;
+  /* Set at runtime by the strip's drag handle; these are the defaults. */
+  --strip: 252px;
+  --thumb: 76px;
+  --chip: 50px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 13px/1.45 var(--font);
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+.spacer { flex: 1; }
+
+#app { display: flex; flex-direction: column; height: 100%; }
+
+/* ── Top bar ──────────────────────────────────────────────────── */
+.bar {
+  display: flex; align-items: center; gap: 10px;
+  height: 46px; flex: 0 0 46px; padding: 0 12px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 7px; font-weight: 600; letter-spacing: .2px; }
+.brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.folder {
+  font-family: var(--mono); font-size: 11px;
+  max-width: 330px; overflow: hidden; white-space: nowrap;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn {
+  font: inherit; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  padding: 5px 11px; border-radius: var(--radius); cursor: pointer;
+  transition: background .12s, border-color .12s, opacity .12s;
+}
+.btn:hover:not(:disabled) { background: #22222a; border-color: #43434e; }
+.btn:disabled { opacity: .38; cursor: default; }
+.btn.sm { padding: 4px 9px; font-size: 12px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0f1a; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: #92b4f8; border-color: #92b4f8; }
+.link {
+  background: none; border: none; color: var(--accent);
+  font: inherit; font-size: 11px; cursor: pointer; padding: 0;
+}
+.link:disabled { opacity: .38; cursor: default; }
+
+.tabs { display: flex; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 2px; }
+.tab {
+  font: inherit; color: var(--muted); background: none; border: none;
+  padding: 3px 16px; border-radius: 5px; cursor: pointer;
+}
+.tab.on { background: var(--accent-dim); color: var(--text); }
+
+/* ── Body split ───────────────────────────────────────────────── */
+main { flex: 1; display: flex; min-height: 0; }
+
+.strip {
+  width: var(--strip); flex: 0 0 var(--strip);
+  background: var(--panel);
+  display: flex; flex-direction: column; min-height: 0;
+}
+.stripHead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 11px;
+}
+.stripList { flex: 1; overflow-y: auto; padding: 6px; }
+
+.card {
+  display: flex; gap: 8px; align-items: center;
+  padding: 5px; margin-bottom: 3px;
+  border: 1px solid transparent; border-radius: var(--radius);
+  cursor: pointer;
+}
+.card:hover { background: var(--panel-2); }
+.card.sel { background: var(--accent-dim); border-color: var(--accent); }
+.card .th {
+  position: relative;
+  width: var(--thumb); height: var(--thumb); flex: 0 0 var(--thumb);
+  border-radius: 5px; background: #202027 center/cover no-repeat;
+}
+/* Browsers cannot decode every format we can edit (Chrome has no HEIC or TIFF
+   decoder). Name the format so an empty tile reads as a missing preview rather
+   than a broken image. */
+.card .th:not([style*="url"])::after {
+  content: attr(data-ext);
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 10px; letter-spacing: .5px; color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Drag handle for the filmstrip. "Too small" is a matter of screen and taste,
+   so the panel is resizable and the thumbnails scale with it. */
+.resizer {
+  flex: 0 0 4px; cursor: col-resize; background: var(--line);
+  transition: background .12s;
+}
+.resizer:hover, .resizer.on { background: var(--accent); }
+.card .meta { min-width: 0; flex: 1; }
+.card .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.card.edited .nm::after {
+  content: ""; display: inline-block; width: 5px; height: 5px;
+  border-radius: 50%; background: var(--edited); margin-left: 5px; vertical-align: middle;
+}
+.flags { display: flex; gap: 3px; margin-top: 2px; }
+.flag { width: 5px; height: 5px; border-radius: 50%; background: var(--line-2); }
+.flag.on { background: #4a8f5f; }
+
+#stage { flex: 1; position: relative; min-width: 0; }
+.view { position: absolute; inset: 0; }
+
+/* ── Overlays shared by both views ────────────────────────────── */
+.overlay { position: absolute; z-index: 500; pointer-events: none; }
+.overlay > * { pointer-events: auto; }
+.overlay.tl { top: 10px; left: 10px; right: 10px; }
+.overlay.bl { bottom: 10px; left: 10px; display: flex; gap: 6px; align-items: center; }
+.overlay.br { bottom: 10px; right: 10px; max-width: 42%; text-align: right; }
+.tools .btn, .tools .chk, .shift {
+  background: rgba(19,19,22,.94); backdrop-filter: blur(6px);
+  border: 1px solid var(--line-2); border-radius: var(--radius);
+}
+.hint {
+  display: inline-block; padding: 5px 10px; font-size: 11px; color: var(--muted);
+  background: rgba(19,19,22,.92); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.chk { display: flex; align-items: center; gap: 5px; padding: 4px 9px; font-size: 12px; cursor: pointer; }
+.shift { display: flex; align-items: center; gap: 5px; padding: 4px 8px; }
+.shift .btn { background: var(--panel-2); }
+
+/* ── Map ──────────────────────────────────────────────────────── */
+#map { position: absolute; inset: 0; background: #101015; }
+.leaflet-container { background: #101015; font: inherit; }
+/* Mute OSM's bright cartography so it sits under a dark UI without shouting. */
+.leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.86) contrast(.92) saturate(.55); }
+.leaflet-control-attribution { background: rgba(19,19,22,.85) !important; color: var(--muted) !important; font-size: 10px !important; }
+.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-bar a { background: var(--panel-2) !important; color: var(--text) !important; border-color: var(--line-2) !important; }
+
+.pin {
+  position: relative;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: #2a2a33 center/cover no-repeat; border: 2px solid var(--muted);
+  box-shadow: 0 2px 6px rgba(0,0,0,.55);
+}
+.pin::after {
+  content: ""; position: absolute; left: 50%; bottom: -9px;
+  transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--muted);
+}
+.pin.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.3), 0 2px 6px rgba(0,0,0,.55); z-index: 400; }
+.pin.sel::after { border-top-color: var(--accent); }
+.pin.edited { border-color: var(--edited); }
+.pin.edited::after { border-top-color: var(--edited); }
+
+/* ── Timeline ─────────────────────────────────────────────────── */
+#timeView { display: flex; flex-direction: column; background: var(--bg); }
+.trayWrap { flex: 0 0 auto; border-bottom: 1px solid var(--line); padding: 7px 12px; background: var(--panel); }
+.trayLabel { font-size: 11px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
+.tray { display: flex; gap: 6px; overflow-x: auto; min-height: 54px; align-items: center; }
+.days { flex: 1; overflow: auto; padding: 14px 12px 64px; }
+
+.day { margin-bottom: 20px; }
+.shift .btn.on { background: var(--accent-dim); border-color: var(--accent); }
+/* Pinned to the left edge: when the track is zoomed wider than the pane, a
+   header that scrolls away leaves you with no idea which day you are editing. */
+.dayHead {
+  display: flex; align-items: baseline; gap: 9px; margin-bottom: 5px;
+  position: sticky; left: 0; width: max-content;
+  padding-right: 10px; background: var(--bg);
+}
+.dayHead b { font-size: 12px; font-weight: 600; }
+.dayHead span { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.track {
+  position: relative; height: 74px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.track.drop { border-color: var(--accent); background: #16161d; }
+.tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.tick.major { background: var(--line-2); }
+.tickLab { position: absolute; bottom: 3px; font-size: 9px; color: var(--muted); font-family: var(--mono); transform: translateX(-50%); }
+
+.chip {
+  position: absolute; top: 9px;
+  width: var(--chip); height: var(--chip); transform: translateX(-50%);
+  border-radius: 5px; border: 2px solid var(--line-2);
+  background: #202027 center/cover no-repeat;
+  cursor: grab; touch-action: none;
+  box-shadow: 0 2px 5px rgba(0,0,0,.5);
+}
+.chip[data-ext]:not([style*="url"])::before {
+  content: attr(data-ext);
+  position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 9px; color: var(--muted); text-transform: uppercase;
+}
+.chip.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.25); z-index: 3; }
+.chip.edited { border-color: var(--edited); }
+.chip.drag { cursor: grabbing; z-index: 9; opacity: .92; }
+.tray .chip { position: static; transform: none; flex: 0 0 auto; top: auto; }
+/* Drop indicator: a guide at the exact landing point, labelled with the time
+   that will be written and what the move costs. */
+.dropline {
+  position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
+  background: var(--accent); z-index: 8; pointer-events: none;
+}
+.dropline .lab, .dropline .note {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 10px; line-height: 1;
+  padding: 3px 6px; border-radius: 4px; white-space: nowrap;
+}
+.dropline .lab {
+  top: -9px; background: var(--accent); color: #0b0f1a; font-weight: 700;
+}
+.dropline .note {
+  bottom: -9px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--line-2);
+}
+
+/* Stand-in for a tray chip, which cannot leave the tray during the drag. */
+.chip.ghost { opacity: .55; pointer-events: none; z-index: 7; }
+
+.chipTime {
+  position: absolute; left: 50%; bottom: -15px; transform: translateX(-50%);
+  font-size: 9px; font-family: var(--mono); color: var(--accent); white-space: nowrap;
+  display: none; pointer-events: none;
+}
+.chip.sel .chipTime, .chip.drag .chipTime { display: block; }
+
+/* ── Inspector ────────────────────────────────────────────────── */
+.inspector {
+  flex: 0 0 52px; display: flex; align-items: center; gap: 14px;
+  padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line);
+}
+.insLeft { display: flex; align-items: center; gap: 8px; min-width: 168px; }
+.selLabel { font-size: 12px; }
+.pill {
+  font-size: 10px; padding: 1px 7px; border-radius: 20px;
+  background: rgba(224,175,104,.14); color: var(--edited); border: 1px solid rgba(224,175,104,.3);
+}
+.fields { display: flex; align-items: center; gap: 10px; flex: 1; }
+.fld { display: flex; flex-direction: column; gap: 2px; }
+.fld > span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.fld input {
+  font: inherit; font-family: var(--mono); font-size: 12px;
+  color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 7px; width: 122px;
+}
+.fld.sm input { width: 68px; }
+.fld input:focus { outline: none; border-color: var(--accent); }
+.fld input:disabled { opacity: .4; }
+.fld input.multi { color: var(--muted); font-style: italic; }
+.sep { width: 1px; height: 26px; background: var(--line); }
+
+/* ── Save sheet ───────────────────────────────────────────────── */
+.modalWrap {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,.62); display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  width: 470px; background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: 11px; padding: 20px; box-shadow: 0 18px 50px rgba(0,0,0,.6);
+}
+.modal h2 { margin: 0 0 5px; font-size: 15px; }
+.modal p { margin: 0 0 14px; font-size: 12px; }
+.radios { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+.radio {
+  display: flex; gap: 9px; align-items: flex-start; padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
+}
+.radio:has(input:checked) { border-color: var(--accent); background: rgba(122,162,247,.07); }
+.radio div { display: flex; flex-direction: column; gap: 1px; }
+.radio b { font-size: 12px; font-weight: 600; }
+.radio span { font-size: 11px; }
+.radio code { font-family: var(--mono); font-size: 10px; }
+.fld.wide { width: 100%; }
+.fld.wide .row { display: flex; gap: 6px; }
+.fld.wide input { flex: 1; width: auto; }
+.modalBtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* ── Toast ────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 66px; left: 50%; transform: translateX(-50%);
+  z-index: 3000; max-width: 60ch;
+  padding: 8px 14px; font-size: 12px;
+  background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,.5);
+}
+.toast.err { border-color: var(--danger); color: var(--danger); }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #2c2c34; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
+::-webkit-scrollbar-track { background: transparent; }

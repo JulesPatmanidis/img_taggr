@@ -1,0 +1,18 @@
+[package]
+name = "img-taggr-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "Browser metadata engine for img-taggr"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+little_exif = "0.6.23"
+wasm-bindgen = "0.2.128"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
