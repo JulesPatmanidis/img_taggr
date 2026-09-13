@@ -10,9 +10,9 @@ use image::imageops::FilterType;
 use image::DynamicImage;
 use std::path::Path;
 
-// Sized for the largest thumbnail the strip can show (132px) on a 2x display,
-// with headroom. Raising this further costs memory on big folders for no gain.
-pub const MAX_EDGE: u32 = 384;
+/// Long edge of a generated thumbnail. Comfortably above what any view asks
+/// for on a high-DPI display; raising it costs memory on big folders.
+const MAX_EDGE: u32 = 384;
 
 /// Undo the camera's EXIF orientation so the thumbnail is upright.
 fn apply_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
@@ -28,8 +28,8 @@ fn apply_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
     }
 }
 
-fn encode(img: DynamicImage) -> Option<String> {
-    let img = img.thumbnail(MAX_EDGE, MAX_EDGE);
+fn encode_oriented(img: DynamicImage, orientation: u32) -> Option<String> {
+    let img = apply_orientation(img.thumbnail(MAX_EDGE, MAX_EDGE), orientation);
     let mut buf = std::io::Cursor::new(Vec::new());
     img.into_rgb8()
         .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
@@ -46,8 +46,9 @@ pub fn make(path: &Path, orientation: u32) -> Option<String> {
     if let Some(bytes) = crate::exif::embedded_preview(path) {
         if let Ok(img) = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg) {
             // Embedded previews are stored un-rotated, same as the main image,
-            // so the orientation tag applies to them too.
-            return encode(apply_orientation(img, orientation));
+            // so the orientation tag applies to them too. Downscale before
+            // rotating: transposing a multi-megapixel preview is pure waste.
+            return encode_oriented(img, orientation);
         }
     }
 
@@ -58,7 +59,6 @@ pub fn make(path: &Path, orientation: u32) -> Option<String> {
         .with_guessed_format()
         .ok()?;
     let img = reader.decode().ok()?;
-    // Downscale before rotating: rotation on a 48MP buffer is pure waste.
     let img = img.resize(MAX_EDGE * 2, MAX_EDGE * 2, FilterType::Triangle);
-    encode(apply_orientation(img, orientation))
+    encode_oriented(img, orientation)
 }

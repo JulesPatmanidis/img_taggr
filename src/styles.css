@@ -105,14 +105,16 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 /* Browsers cannot decode every format we can edit (Chrome has no HEIC or TIFF
    decoder). Name the format so an empty tile reads as a missing preview rather
-   than a broken image. */
-.card .th:not([style*="url"])::after {
+   than a broken image — the same treatment on filmstrip tiles and chips. */
+.card .th[data-ext]:not([style*="url"])::after,
+.chip[data-ext]:not([style*="url"])::after {
   content: attr(data-ext);
   position: absolute; inset: 0; display: flex;
   align-items: center; justify-content: center;
   font-size: 10px; letter-spacing: .5px; color: var(--muted);
   text-transform: uppercase;
 }
+.chip[data-ext]:not([style*="url"])::after { font-size: 9px; letter-spacing: 0; }
 
 /* Drag handle for the filmstrip. "Too small" is a matter of screen and taste,
    so the panel is resizable and the thumbnails scale with it. */
@@ -213,12 +215,6 @@ main { flex: 1; display: flex; min-height: 0; }
   background: #202027 center/cover no-repeat;
   cursor: grab; touch-action: none;
   box-shadow: 0 2px 5px rgba(0,0,0,.5);
-}
-.chip[data-ext]:not([style*="url"])::before {
-  content: attr(data-ext);
-  position: absolute; inset: 0; display: flex;
-  align-items: center; justify-content: center;
-  font-size: 9px; color: var(--muted); text-transform: uppercase;
 }
 .chip.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.25); z-index: 3; }
 .chip.edited { border-color: var(--edited); }

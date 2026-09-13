@@ -35,6 +35,24 @@ export function supported(filename) {
 }
 
 /**
+ * The writable extensions, comma separated. The UI builds its file-dialog
+ * filter from this so the list exists in exactly one place.
+ * @returns {string}
+ */
+export function writable_extensions() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.writable_extensions();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
  * Write an edit and return the new file bytes. Throws on failure so the caller
  * can report which file failed and why.
  * @param {Uint8Array} bytes

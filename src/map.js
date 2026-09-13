@@ -8,7 +8,9 @@
  *                        ones, positioned by their timestamp
  */
 
-import { state, selected, isEdited, commit, emit, dtToMs, roundCoord } from './state.js';
+import {
+  state, selected, commit, emit, dtToMs, roundCoord, clickSelect, markClasses,
+} from './state.js';
 
 let map = null;
 /** photo id -> L.Marker */
@@ -34,7 +36,7 @@ export function initMap(el) {
       p.lat = roundCoord(e.latlng.lat);
       p.lon = roundCoord(((e.latlng.lng + 180) % 360 + 360) % 360 - 180);
     }
-    emit('change');
+    emit();
   });
 
   return map;
@@ -44,8 +46,7 @@ export function setShowRoute(v) { showRoute = v; render(); }
 export function invalidate() { if (map) map.invalidateSize(); }
 
 function icon(p) {
-  const cls = ['pin', state.selection.has(p.id) ? 'sel' : '', isEdited(p) ? 'edited' : '']
-    .filter(Boolean).join(' ');
+  const cls = markClasses('pin', p);
   const img = p.thumb ? `background-image:url('${p.thumb}')` : '';
   return L.divIcon({
     className: '',
@@ -69,11 +70,7 @@ function makeMarker(p) {
     dragId = p.id;
     // Dragging a marker outside the current selection re-selects just that photo,
     // matching how every file manager behaves.
-    if (!state.selection.has(p.id)) {
-      state.selection.clear();
-      state.selection.add(p.id);
-      emit('change');
-    }
+    if (!state.selection.has(p.id)) clickSelect(p.id);
     commit();
     const group = selected().filter((q) => q.lat != null && q.id !== p.id);
     drag = { origin: { lat: p.lat, lon: p.lon }, group: group.map((q) => ({ q, lat: q.lat, lon: q.lon })) };
@@ -102,34 +99,41 @@ function makeMarker(p) {
     }
     drag = null;
     dragId = null;
-    emit('change');
+    emit();
   });
 
   m.on('click', (e) => {
     L.DomEvent.stopPropagation(e);
-    const mod = e.originalEvent.ctrlKey || e.originalEvent.metaKey;
-    if (mod) {
-      state.selection.has(p.id) ? state.selection.delete(p.id) : state.selection.add(p.id);
-    } else {
-      state.selection.clear();
-      state.selection.add(p.id);
-    }
-    emit('change');
+    const ev = e.originalEvent;
+    clickSelect(p.id, { toggle: ev.ctrlKey || ev.metaKey });
   });
 
   return m;
 }
 
 function drawRoute(live) {
-  if (route) { route.remove(); route = null; }
-  if (!showRoute) return;
+  if (!showRoute || state.photos.length === 0) {
+    if (route) { route.remove(); route = null; }
+    return;
+  }
   const pts = state.photos
     .filter((p) => p.lat != null && p.datetime)
     .sort((a, b) => dtToMs(a.datetime) - dtToMs(b.datetime))
     .map((p) => (live && markers.get(p.id) ? markers.get(p.id).getLatLng() : L.latLng(p.lat, p.lon)));
-  if (pts.length < 2) return;
-  route = L.polyline(pts, { color: '#7aa2f7', weight: 1.5, opacity: 0.5, dashArray: '4 4' }).addTo(map);
-  route.bringToBack();
+
+  if (pts.length < 2) {
+    if (route) { route.remove(); route = null; }
+    return;
+  }
+  // Reuse the polyline across drag frames rather than tearing down the SVG
+  // path 60 times a second.
+  if (route) {
+    route.setLatLngs(pts);
+  } else {
+    route = L.polyline(pts, { color: '#7aa2f7', weight: 1.5, opacity: 0.5, dashArray: '4 4' })
+      .addTo(map);
+    route.bringToBack();
+  }
 }
 
 export function render() {
@@ -157,11 +161,10 @@ export function render() {
   drawRoute(false);
 }
 
-/** Zoom to everything placed, or to the selection if it has coordinates. */
-export function fit(onlySelection = false) {
+/** Zoom to fit every placed photo. */
+export function fit() {
   if (!map) return;
-  const src = onlySelection ? selected() : state.photos;
-  const pts = src.filter((p) => p.lat != null).map((p) => [p.lat, p.lon]);
+  const pts = state.photos.filter((p) => p.lat != null).map((p) => [p.lat, p.lon]);
   if (!pts.length) return;
   if (pts.length === 1) map.setView(pts[0], Math.max(map.getZoom(), 14));
   else map.fitBounds(L.latLngBounds(pts).pad(0.18));
@@ -211,7 +214,7 @@ export function interpolate() {
       ? `Nothing to fill — the ${outside} un-placed photo${outside > 1 ? 's fall' : ' falls'} outside the placed range.`
       : 'Every photo in range already has a location.' };
   }
-  if (filled) emit('change');
+  emit();
   return {
     ok: true,
     msg: `Placed ${filled} photo${filled > 1 ? 's' : ''} along the route` +

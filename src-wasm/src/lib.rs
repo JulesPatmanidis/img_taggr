@@ -68,7 +68,7 @@ fn to_exif_stamp(iso: &str) -> Option<String> {
 /// Apply one photo's edit. `datetime` is ISO or empty, `offset` like "+02:00"
 /// or empty; `has_gps` distinguishes "clear the location" from "leave it alone".
 fn write_tags(
-    buf: &[u8],
+    buf: Vec<u8>,
     ft: FileExtension,
     datetime: &str,
     offset: &str,
@@ -77,7 +77,7 @@ fn write_tags(
     has_gps: bool,
     clear_gps: bool,
 ) -> Result<Vec<u8>, String> {
-    let mut out = buf.to_vec();
+    let mut out = buf;
 
     // A file carrying no EXIF at all is the normal case for screenshots and
     // exports — precisely what this tool exists to fix — so fall back to a
@@ -133,14 +133,21 @@ pub fn supported(filename: &str) -> bool {
     WRITABLE.contains(&ext_of(filename).as_str())
 }
 
+/// The writable extensions, comma separated. The UI builds its file-dialog
+/// filter from this so the list exists in exactly one place.
+#[wasm_bindgen]
+pub fn writable_extensions() -> String {
+    WRITABLE.join(",")
+}
+
 /// Read the fields the UI needs, as JSON. Returns `{}` for a file with no
 /// metadata — not an error, since that is a normal and expected state.
 #[wasm_bindgen]
-pub fn read_meta(bytes: &[u8], filename: &str) -> String {
+pub fn read_meta(bytes: Vec<u8>, filename: &str) -> String {
     let Some(ft) = file_type(filename) else {
         return "{}".into();
     };
-    let Ok(md) = Metadata::new_from_vec(&bytes.to_vec(), ft) else {
+    let Ok(md) = Metadata::new_from_vec(&bytes, ft) else {
         return "{}".into();
     };
 
@@ -213,7 +220,7 @@ pub fn read_meta(bytes: &[u8], filename: &str) -> String {
 /// can report which file failed and why.
 #[wasm_bindgen]
 pub fn write_meta(
-    bytes: &[u8],
+    bytes: Vec<u8>,
     filename: &str,
     datetime: &str,
     offset: &str,

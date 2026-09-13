@@ -16,8 +16,6 @@ const READ_TAGS: &[&str] = &[
     "-SourceFile",
     "-FileName",
     "-Directory",
-    "-FileSize",
-    "-MIMEType",
     "-FileTypeExtension",
     "-DateTimeOriginal",
     "-CreateDate",
@@ -26,22 +24,22 @@ const READ_TAGS: &[&str] = &[
     "-OffsetTime",
     "-GPSLatitude",
     "-GPSLongitude",
-    "-GPSAltitude",
-    "-ImageWidth",
-    "-ImageHeight",
     "-Orientation",
-    "-Make",
-    "-Model",
     "-FileModifyDate",
 ];
 
-fn exiftool_path() -> Option<&'static PathBuf> {
-    static P: OnceLock<Option<PathBuf>> = OnceLock::new();
+/// The exiftool binary and its version, probed once. The probe already has the
+/// version in hand, so `version()` is a field read rather than a second spawn.
+fn exiftool() -> Option<&'static (PathBuf, String)> {
+    static P: OnceLock<Option<(PathBuf, String)>> = OnceLock::new();
     P.get_or_init(|| {
         for cand in ["exiftool", "/usr/bin/exiftool", "/usr/local/bin/exiftool"] {
             let p = PathBuf::from(cand);
-            if Command::new(&p).arg("-ver").output().is_ok() {
-                return Some(p);
+            if let Ok(out) = Command::new(&p).arg("-ver").output() {
+                if out.status.success() {
+                    let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    return Some((p, v));
+                }
             }
         }
         None
@@ -49,10 +47,12 @@ fn exiftool_path() -> Option<&'static PathBuf> {
     .as_ref()
 }
 
+fn exiftool_path() -> Option<&'static PathBuf> {
+    exiftool().map(|(p, _)| p)
+}
+
 pub fn version() -> Option<String> {
-    let et = exiftool_path()?;
-    let out = Command::new(et).arg("-ver").output().ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    exiftool().map(|(_, v)| v.clone())
 }
 
 /// One photo as the UI sees it. All metadata fields are optional because a file
@@ -62,19 +62,14 @@ pub struct Photo {
     pub path: String,
     pub name: String,
     pub ext: String,
-    pub mime: Option<String>,
-    pub bytes: Option<u64>,
     /// "YYYY-MM-DDTHH:MM:SS" — local wall-clock time as recorded, no zone applied.
     pub datetime: Option<String>,
     /// UTC offset string as stored, e.g. "+02:00".
     pub offset: Option<String>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    pub alt: Option<f64>,
-    pub width: Option<u32>,
-    pub height: Option<u32>,
+    /// Needed to render thumbnails upright.
     pub orientation: u32,
-    pub camera: Option<String>,
     /// Filesystem mtime, the fallback when a file has no embedded date at all.
     pub file_modified: Option<String>,
 }
@@ -189,14 +184,6 @@ pub fn read_batch(paths: &[PathBuf]) -> Result<Vec<Photo>, String> {
             .and_then(|raw| parse_stamp(&raw))
             .map(|(d, _)| d);
 
-        let camera = match (s(v, "Make"), s(v, "Model")) {
-            (Some(mk), Some(md)) if md.starts_with(&mk) => Some(md),
-            (Some(mk), Some(md)) => Some(format!("{mk} {md}")),
-            (None, Some(md)) => Some(md),
-            (Some(mk), None) => Some(mk),
-            _ => None,
-        };
-
         // GPS is only meaningful as a pair; a lone coordinate is corrupt data.
         let (lat, lon) = match (
             f(v, "GPSLatitude").filter(|x| x.is_finite() && x.abs() <= 90.0),
@@ -212,17 +199,11 @@ pub fn read_batch(paths: &[PathBuf]) -> Result<Vec<Photo>, String> {
                 .unwrap_or_default()
                 .to_lowercase(),
             name,
-            mime: s(v, "MIMEType"),
-            bytes: f(v, "FileSize").map(|b| b as u64),
             datetime,
             offset,
             lat,
             lon,
-            alt: f(v, "GPSAltitude").filter(|x| x.is_finite()),
-            width: f(v, "ImageWidth").map(|x| x as u32),
-            height: f(v, "ImageHeight").map(|x| x as u32),
             orientation: f(v, "Orientation").map(|x| x as u32).unwrap_or(1),
-            camera,
             file_modified,
             path,
         });
@@ -258,14 +239,15 @@ pub struct Edit {
     pub offset: Option<String>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
-    pub alt: Option<f64>,
     /// Explicitly strip GPS rather than set it.
     #[serde(default)]
     pub clear_gps: bool,
 }
 
+/// The tag assignments for one edit. Callers add their own exiftool flags, so
+/// an empty result unambiguously means "nothing to write".
 pub fn build_args(edit: &Edit) -> Vec<String> {
-    let mut a: Vec<String> = vec!["-n".into(), "-q".into(), "-q".into()];
+    let mut a: Vec<String> = Vec::new();
 
     if let Some(dt) = edit.datetime.as_deref().filter(|d| d.len() >= 19) {
         // -AllDates covers DateTimeOriginal, CreateDate and ModifyDate in one go,
@@ -290,10 +272,6 @@ pub fn build_args(edit: &Edit) -> Vec<String> {
         a.push(format!("-GPSLatitudeRef={}", if lat < 0.0 { "S" } else { "N" }));
         a.push(format!("-GPSLongitude={}", lon.abs()));
         a.push(format!("-GPSLongitudeRef={}", if lon < 0.0 { "W" } else { "E" }));
-        if let Some(alt) = edit.alt.filter(|v| v.is_finite()) {
-            a.push(format!("-GPSAltitude={}", alt.abs()));
-            a.push(format!("-GPSAltitudeRef={}", if alt < 0.0 { 1 } else { 0 }));
-        }
     }
     a
 }
@@ -303,11 +281,13 @@ pub fn build_args(edit: &Edit) -> Vec<String> {
 pub fn write_one(target: &Path, edit: &Edit, keep_backup: bool) -> Result<(), String> {
     let et = exiftool_path().ok_or_else(|| "exiftool not found on PATH".to_string())?;
     let args = build_args(edit);
-    if args.len() <= 3 {
-        return Ok(()); // nothing but the standing flags — no change requested
+    if args.is_empty() {
+        return Ok(()); // no change requested
     }
 
     let mut cmd = Command::new(et);
+    // -n: write values verbatim rather than parsing human-readable forms.
+    cmd.args(["-n", "-q", "-q"]);
     if !keep_backup {
         cmd.arg("-overwrite_original");
     }

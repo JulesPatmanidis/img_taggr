@@ -11,7 +11,7 @@
  */
 
 import {
-  state, selected, isEdited, commit, emit,
+  state, selected, commit, emit, clickSelect, markClasses, photoCount,
   dtToMs, msToDt, secOfDay, dayOf, fmtDayLabel, fmtDur,
 } from './state.js';
 
@@ -34,7 +34,6 @@ const chips = new Map();
 let drag = null;
 
 export function setZoom(z) { zoom = z; render(); }
-export function getZoom() { return zoom; }
 
 export function initTimeline(refs) {
   els = refs;
@@ -42,12 +41,11 @@ export function initTimeline(refs) {
   els.tray.addEventListener('pointerdown', onPointerDown);
 }
 
-const dayStartMs = (day) => Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10));
+const dayStartMs = (day) => dtToMs(`${day}T00:00:00`);
 
 function chipEl(p) {
   const el = document.createElement('div');
-  el.className = ['chip', state.selection.has(p.id) ? 'sel' : '', isEdited(p) ? 'edited' : '']
-    .filter(Boolean).join(' ');
+  el.className = markClasses('chip', p);
   el.dataset.id = p.id;
   el.title = `${p.name}\n${p.datetime ? p.datetime.replace('T', ' ') : 'no date'}`;
   if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
@@ -108,6 +106,7 @@ export function render() {
     for (const d of [...seeds].sort().slice(0, 8)) byDay.set(d, []);
   }
 
+  const { chipW, laneH } = metrics();
   const frag = document.createDocumentFragment();
   for (const day of [...byDay.keys()].sort()) {
     const list = byDay.get(day);
@@ -120,7 +119,7 @@ export function render() {
     head.innerHTML = `<b></b><span></span>`;
     head.querySelector('b').textContent = fmtDayLabel(day);
     head.querySelector('span').textContent = list.length
-      ? `${list.length} photo${list.length > 1 ? 's' : ''}`
+      ? photoCount(list.length)
       : 'drop photos here to date them';
     dayEl.appendChild(head);
 
@@ -150,7 +149,6 @@ export function render() {
     const placed = list
       .map((p) => ({ p, x: (secOfDay(p.datetime) / DAY_SEC) * width }))
       .sort((a, b) => a.x - b.x);
-    const { chipW, laneH } = metrics();
     const laneRight = [];
     for (const item of placed) {
       let lane = laneRight.findIndex((right) => item.x - right >= chipW);
@@ -204,17 +202,11 @@ function onPointerDown(ev) {
   const p = state.photos.find((q) => q.id === id);
   if (!p) return;
 
-  const mod = ev.ctrlKey || ev.metaKey;
-  if (mod) {
-    state.selection.has(id) ? state.selection.delete(id) : state.selection.add(id);
-    emit('change');
+  if (ev.ctrlKey || ev.metaKey) {
+    clickSelect(id, { toggle: true });
     return;
   }
-  if (!state.selection.has(id)) {
-    state.selection.clear();
-    state.selection.add(id);
-    emit('change');
-  }
+  if (!state.selection.has(id)) clickSelect(id);
 
   // Selecting re-rendered the track, so `hit` may now be detached. Re-acquire
   // the live element before starting the drag, or the gesture moves a ghost.
@@ -335,17 +327,17 @@ function onPointerMove(ev) {
   for (const q of drag.group) {
     const o = drag.origin.get(q.id);
     if (!o) continue;
-    const ms = dtToMs(o) + deltaMs;
+    const stamp = msToDt(dtToMs(o) + deltaMs);
     const el = chips.get(q.id);
-    const track = els.days.querySelector(`.track[data-day="${msToDt(ms).slice(0, 10)}"]`);
+    const track = els.days.querySelector(`.track[data-day="${dayOf(stamp)}"]`);
     if (!el) continue;
     if (track) {
       if (el.parentElement !== track) track.appendChild(el);
-      const sec = (ms - dayStartMs(msToDt(ms).slice(0, 10))) / 1000;
-      el.style.left = `${(sec / DAY_SEC) * track.getBoundingClientRect().width}px`;
+      el.style.left =
+        `${(secOfDay(stamp) / DAY_SEC) * track.getBoundingClientRect().width}px`;
       el.style.opacity = '';
       const t = el.querySelector('.chipTime');
-      if (t) t.textContent = msToDt(ms).slice(11, 16);
+      if (t) t.textContent = stamp.slice(11, 16);
     } else {
       // Lands on a day that has no track yet — it will appear after the drop.
       el.style.opacity = '.35';
@@ -354,7 +346,7 @@ function onPointerMove(ev) {
 
   const n = drag.group.length;
   els.hint(
-    drag.group.length > 1
+    n > 1
       ? `${fmtDur(deltaMs / 1000)} · shifting ${n} photos together (hold Alt to move one)`
       : `${fmtDur(deltaMs / 1000)} · ${msToDt(dtToMs(drag.origin.get(drag.p.id)) + deltaMs).replace('T', ' ')}`
   );
@@ -382,7 +374,7 @@ function onPointerUp() {
       if (o) q.datetime = msToDt(dtToMs(o) + d.pending);
     }
   }
-  emit('change');
+  emit();
 }
 
 /** Shift every selected photo that has a date by `sec` seconds. */
@@ -391,6 +383,6 @@ export function shiftSelection(sec) {
   if (!sel.length) return 0;
   commit();
   for (const p of sel) p.datetime = msToDt(dtToMs(p.datetime) + sec * 1000);
-  emit('change');
+  emit();
   return sel.length;
 }

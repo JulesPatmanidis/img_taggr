@@ -1,8 +1,9 @@
 /* img-taggr — wiring: folder loading, filmstrip, inspector, save. */
 
 import {
-  state, on, emit, selected, editedPhotos, isEdited, commit, undo, redo,
-  dtToMs, msToDt, normDt, roundCoord,
+  state, setOnChange, emit, selected, editedPhotos, isEdited, commit, undo, redo,
+  normDt, roundCoord, clickSelect, dayOf, timeOf, seedDay, photoCount,
+  EDITABLE, rebase, revertToBaseline, resetHistory,
 } from './state.js';
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
@@ -33,28 +34,23 @@ async function openFolder() {
     if (!res) { $('folderLabel').textContent = prevLabel; return; }
     state.folder = res.label;
     state.selection.clear();
-    state.undo.length = 0;
-    state.redo.length = 0;
-    state.photos = res.photos.map((p) => ({
-      ...p,
-      id: p.path,
-      thumb: null,
+    resetHistory();
+    state.photos = res.photos.map((p) => {
+      const photo = { ...p, id: p.path, thumb: null,
+        lat: roundCoord(p.lat), lon: roundCoord(p.lon) };
       // Keep the as-read values so "edited" is always a real comparison rather
       // than a flag we have to remember to set.
-      orig: { datetime: p.datetime, offset: p.offset, lat: roundCoord(p.lat), lon: roundCoord(p.lon) },
-      lat: roundCoord(p.lat),
-      lon: roundCoord(p.lon),
-    }));
+      rebase(photo);
+      return photo;
+    });
 
     $('folderLabel').textContent = res.label.length > 44 ? `…${res.label.slice(-43)}` : res.label;
     $('folderLabel').title = res.label;
     buildStrip();
-    emit('change');
+    emit();
     MapView.fit();
-    toast(
-      `${state.photos.length} photo${state.photos.length === 1 ? '' : 's'}` +
-      (res.unreadable ? ` · ${res.unreadable} unreadable` : '')
-    );
+    toast(photoCount(state.photos.length)
+      + (res.unreadable ? ` · ${res.unreadable} unreadable` : ''));
     loadThumbs();
   } catch (e) {
     toast(String(e), true);
@@ -140,25 +136,19 @@ $('stripList').addEventListener('click', (ev) => {
   const id = card.dataset.id;
   const idx = state.photos.findIndex((p) => p.id === id);
 
-  if (ev.shiftKey && lastClicked !== null) {
-    const [a, b] = [lastClicked, idx].sort((x, y) => x - y);
-    for (let i = a; i <= b; i++) state.selection.add(state.photos[i].id);
-  } else if (ev.ctrlKey || ev.metaKey) {
-    state.selection.has(id) ? state.selection.delete(id) : state.selection.add(id);
-    lastClicked = idx;
-  } else {
-    state.selection.clear();
-    state.selection.add(id);
-    lastClicked = idx;
-  }
-  emit('change');
+  clickSelect(id, {
+    toggle: ev.ctrlKey || ev.metaKey,
+    extend: ev.shiftKey,
+    anchor: lastClicked,
+  });
+  if (!ev.shiftKey) lastClicked = idx;
 });
 
 $('btnSelectAll').addEventListener('click', () => {
   const all = state.selection.size === state.photos.length;
   state.selection.clear();
   if (!all) for (const p of state.photos) state.selection.add(p.id);
-  emit('change');
+  emit();
 });
 
 /* ── Inspector ─────────────────────────────────────────────────── */
@@ -181,7 +171,7 @@ function setField(el, val, fmt = (v) => v) {
   }
 }
 
-function renderInspector() {
+function renderInspector(edited = editedPhotos().length) {
   const sel = selected();
   const has = sel.length > 0;
   for (const id of ['fDate', 'fTime', 'fTz', 'fLat', 'fLon']) $(id).disabled = !has;
@@ -191,7 +181,6 @@ function renderInspector() {
     ? 'Nothing selected'
     : sel.length === 1 ? sel[0].name : `${sel.length} photos selected`;
 
-  const edited = editedPhotos().length;
   $('editLabel').classList.toggle('hidden', edited === 0);
   $('editLabel').textContent = `${edited} unsaved`;
 
@@ -199,26 +188,30 @@ function renderInspector() {
     for (const id of ['fDate', 'fTime', 'fTz', 'fLat', 'fLon']) setField($(id), null);
     return;
   }
-  setField($('fDate'), common(sel, (p) => (p.datetime ? p.datetime.slice(0, 10) : null)));
-  setField($('fTime'), common(sel, (p) => (p.datetime ? p.datetime.slice(11, 19) : null)));
+  setField($('fDate'), common(sel, (p) => dayOf(p.datetime)));
+  setField($('fTime'), common(sel, (p) => timeOf(p.datetime)));
   setField($('fTz'), common(sel, (p) => p.offset ?? null));
   setField($('fLat'), common(sel, (p) => p.lat ?? null), (v) => v.toFixed(6));
   setField($('fLon'), common(sel, (p) => p.lon ?? null), (v) => v.toFixed(6));
 }
 
-/** Apply an inspector field to the whole selection. */
-function applyField(fn) {
-  const sel = selected();
-  if (!sel.length) return;
+/**
+ * Apply `fn` to every selected photo that `filter` accepts, as one undo step.
+ * Returns how many were touched so callers can report it.
+ */
+function applyField(fn, filter = () => true) {
+  const sel = selected().filter(filter);
+  if (!sel.length) return 0;
   commit();
   for (const p of sel) fn(p);
-  emit('change');
+  emit();
+  return sel.length;
 }
 
 $('fDate').addEventListener('change', (e) => {
   const d = e.target.value;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
-  applyField((p) => { p.datetime = normDt(`${d}T${p.datetime ? p.datetime.slice(11, 19) : '12:00:00'}`); });
+  applyField((p) => { p.datetime = normDt(`${d}T${timeOf(p.datetime) ?? '12:00:00'}`); });
 });
 
 $('fTime').addEventListener('change', (e) => {
@@ -226,13 +219,8 @@ $('fTime').addEventListener('change', (e) => {
   if (!t) return;
   if (t.length === 5) t += ':00';
   if (!/^\d{2}:\d{2}:\d{2}$/.test(t)) return;
-  applyField((p) => {
-    // A photo with no date at all needs one before a time means anything; fall
-    // back to its file mtime, then to today.
-    const day = p.datetime ? p.datetime.slice(0, 10)
-      : (p.file_modified ? p.file_modified.slice(0, 10) : new Date().toISOString().slice(0, 10));
-    p.datetime = normDt(`${day}T${t}`);
-  });
+  // A photo with no date at all needs one before a time means anything.
+  applyField((p) => { p.datetime = normDt(`${dayOf(p.datetime) ?? seedDay(p)}T${t}`); });
 });
 
 $('fTz').addEventListener('change', (e) => {
@@ -252,12 +240,8 @@ for (const [id, key, lim] of [['fLat', 'lat', 90], ['fLon', 'lon', 180]]) {
 }
 
 $('btnRevert').addEventListener('click', () => {
-  const sel = selected().filter(isEdited);
-  if (!sel.length) return;
-  commit();
-  for (const p of sel) Object.assign(p, { ...p.orig });
-  emit('change');
-  toast(`Reverted ${sel.length} photo${sel.length > 1 ? 's' : ''}`);
+  const n = applyField(revertToBaseline, isEdited);
+  if (n) toast(`Reverted ${photoCount(n)}`);
 });
 
 /* ── Filmstrip sizing ──────────────────────────────────────────── */
@@ -315,7 +299,7 @@ function setView(v) {
   $('mapView').classList.toggle('hidden', v !== 'map');
   $('timeView').classList.toggle('hidden', v !== 'time');
   for (const t of $('viewTabs').children) t.classList.toggle('on', t.dataset.view === v);
-  if (v === 'map') MapView.invalidate();
+  if (v === 'map') { MapView.render(); MapView.invalidate(); }
   else TL.render();
 }
 $('viewTabs').addEventListener('click', (e) => {
@@ -329,12 +313,8 @@ $('btnInterp').addEventListener('click', () => {
   toast(r.msg, !r.ok);
 });
 $('btnClearGps').addEventListener('click', () => {
-  const sel = selected().filter((p) => p.lat != null);
-  if (!sel.length) return;
-  commit();
-  for (const p of sel) { p.lat = null; p.lon = null; }
-  emit('change');
-  toast(`Cleared location on ${sel.length} photo${sel.length > 1 ? 's' : ''}`);
+  const n = applyField((p) => { p.lat = null; p.lon = null; }, (p) => p.lat != null);
+  if (n) toast(`Cleared location on ${photoCount(n)}`);
 });
 $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.checked));
 
@@ -350,8 +330,8 @@ $('btnSeedDates').addEventListener('click', () => {
   }
   commit();
   for (const p of undated) p.datetime = normDt(p.file_modified);
-  emit('change');
-  toast(`Dated ${undated.length} photo${undated.length > 1 ? 's' : ''} from file timestamps — now drag to correct them`);
+  emit();
+  toast(`Dated ${photoCount(undated.length)} from file timestamps — now drag to correct them`);
 });
 
 
@@ -372,8 +352,8 @@ $('zoomBar').addEventListener('click', (e) => {
 async function openSave() {
   const n = editedPhotos().length;
   if (!n) return;
-  $('modalSummary').textContent = `${n} photo${n === 1 ? '' : 's'} changed.`
-    + (backend.caps.inPlace ? '' : ' Originals are never modified in the browser.');
+  $('modalSummary').textContent = `${photoCount(n)} changed.`
+    + (backend.caps.saveModes.includes('inplace') ? '' : ' Originals are never modified.');
   if (!$('fOut').value && state.folder) {
     $('fOut').value = await backend.suggestOutput(state.folder);
   }
@@ -404,9 +384,7 @@ $('btnConfirm').addEventListener('click', async () => {
     // pristine source — copy mode re-copies the original, and the browser
     // re-reads the picked File — so sending only what changed since the last
     // save would silently drop edits written in an earlier save.
-    datetime: p.datetime,
-    offset: p.offset,
-    lat: p.lat, lon: p.lon, alt: null,
+    ...Object.fromEntries(EDITABLE.map((k) => [k, p[k]])),
     // Distinguish "remove the location" from "there was never one".
     clear_gps: p.lat == null && p.orig.lat != null,
   }));
@@ -420,19 +398,18 @@ $('btnConfirm').addEventListener('click', async () => {
 
     // Written photos become the new baseline, so the edited markers clear.
     const okSet = new Set(ok.map((r) => r.path));
-    for (const p of state.photos) {
-      if (okSet.has(p.path)) p.orig = { datetime: p.datetime, offset: p.offset, lat: p.lat, lon: p.lon };
-    }
-    state.undo.length = 0;
-    state.redo.length = 0;
+    for (const p of state.photos) if (okSet.has(p.path)) rebase(p);
+    resetHistory();
     $('modal').classList.add('hidden');
-    emit('change');
+    emit();
 
     if (bad.length) {
       console.error('img-taggr write failures', bad);
       toast(`${ok.length} written · ${bad.length} failed — first error: ${bad[0].error}`, true);
     } else {
-      toast(mode === 'copy' ? `Wrote ${ok.length} tagged copies to ${outDir}` : `Updated ${ok.length} files`);
+      toast(mode === 'copy'
+        ? `Wrote ${photoCount(ok.length)} to ${outDir}`
+        : `Updated ${photoCount(ok.length)}`);
     }
   } catch (e) {
     toast(String(e), true);
@@ -442,19 +419,17 @@ $('btnConfirm').addEventListener('click', async () => {
   }
 });
 
-/** Hide save modes this backend cannot perform, rather than offering controls
- *  that would fail. The browser has no access to the originals at all. */
+/** Offer exactly the save modes this backend can perform, rather than showing
+ *  controls that would fail. */
 function applyCaps() {
-  for (const [mode, ok] of [['backup', backend.caps.backups], ['inplace', backend.caps.inPlace]]) {
-    const input = $('modeRadios').querySelector(`input[value="${mode}"]`);
-    if (input) input.closest('.radio').classList.toggle('hidden', !ok);
+  const modes = backend.caps.saveModes;
+  for (const input of $('modeRadios').querySelectorAll('input[name=mode]')) {
+    input.closest('.radio').classList.toggle('hidden', !modes.includes(input.value));
   }
-  const copy = $('modeRadios').querySelector('input[value="copy"]');
-  if (copy && !backend.caps.inPlace) {
-    copy.checked = true;
-    // With nothing to choose between, the radio list is noise.
-    $('modeRadios').classList.add('hidden');
-  }
+  $('modeRadios').querySelector(`input[value="${modes[0]}"]`).checked = true;
+  // With nothing to choose between, the radio list is noise.
+  $('modeRadios').classList.toggle('hidden', modes.length === 1);
+
   $('btnPickOut').classList.toggle('hidden', !backend.caps.outputFolder);
   $('outRow').querySelector('span').textContent = backend.caps.outputFolder
     ? 'Output folder' : 'Download as';
@@ -468,14 +443,14 @@ window.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     const did = e.shiftKey ? redo() : undo();
-    if (did) emit('change'); else toast(e.shiftKey ? 'Nothing to redo' : 'Nothing to undo');
+    if (did) emit(); else toast(e.shiftKey ? 'Nothing to redo' : 'Nothing to undo');
     return;
   }
   if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); $('btnSelectAll').click(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); openSave(); return; }
   if (e.key === 'Escape') {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
-    state.selection.clear(); emit('change'); return;
+    state.selection.clear(); emit(); return;
   }
   if (e.key === 'Tab') { e.preventDefault(); setView(state.view === 'map' ? 'time' : 'map'); return; }
   // Arrow keys nudge time: a minute a press, ten seconds with Shift.
@@ -488,23 +463,28 @@ window.addEventListener('keydown', (e) => {
 
 /* ── Render loop ───────────────────────────────────────────────── */
 function renderAll() {
+  const edited = editedPhotos().length;
   syncStrip();
-  renderInspector();
-  MapView.render();
-  if (state.view === 'time') TL.render();
+  renderInspector(edited);
+  // The map pane keeps its own markers, so only redraw it when it is visible;
+  // re-entering the view redraws through setView.
+  if (state.view === 'map') MapView.render();
+  else TL.render();
 
   const sel = selected();
+  let placed = 0;
+  for (const p of state.photos) if (p.lat != null && ++placed >= 2) break;
+
   $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
-  $('btnInterp').disabled = state.photos.filter((p) => p.lat != null).length < 2;
+  $('btnInterp').disabled = placed < 2;
   $('btnUndo').disabled = state.undo.length === 0;
-  $('btnSave').disabled = editedPhotos().length === 0;
-  const n = editedPhotos().length;
-  $('btnSave').textContent = n ? `Save ${n}` : 'Save';
+  $('btnSave').disabled = edited === 0;
+  $('btnSave').textContent = edited ? `Save ${edited}` : 'Save';
 }
-on('change', renderAll);
+setOnChange(renderAll);
 
 $('btnOpen').addEventListener('click', openFolder);
-$('btnUndo').addEventListener('click', () => { if (undo()) emit('change'); });
+$('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
 
 /* ── Boot ──────────────────────────────────────────────────────── */
 MapView.initMap($('map'));

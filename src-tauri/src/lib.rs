@@ -109,8 +109,6 @@ async fn load_thumb(path: String, orientation: u32) -> Option<String> {
 pub struct ItemResult {
     path: String,
     ok: bool,
-    /// Where the tagged file ended up (differs from `path` in copy mode).
-    written: Option<String>,
     error: Option<String>,
 }
 
@@ -130,8 +128,10 @@ async fn apply_edits(
         std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {dir}: {e}"))?;
     }
 
+    // Validated above, so copy mode always has a directory by this point.
+    let copy_dir = (mode == "copy").then(|| PathBuf::from(out_dir.unwrap_or_default()));
+
     let results = tauri::async_runtime::spawn_blocking(move || {
-        let out_dir = out_dir.map(PathBuf::from);
         items
             .par_iter()
             .map(|edit| {
@@ -139,7 +139,6 @@ async fn apply_edits(
                 let mut res = ItemResult {
                     path: edit.path.clone(),
                     ok: false,
-                    written: None,
                     error: None,
                 };
                 if !src.is_file() {
@@ -147,15 +146,8 @@ async fn apply_edits(
                     return res;
                 }
 
-                let (target, keep_backup) = match mode.as_str() {
-                    "copy" => {
-                        let dir = match out_dir.as_deref() {
-                            Some(d) => d,
-                            None => {
-                                res.error = Some("no output folder".into());
-                                return res;
-                            }
-                        };
+                let (target, keep_backup) = match copy_dir.as_deref() {
+                    Some(dir) => {
                         let dst = paths::dest_for(dir, &src);
                         if let Err(e) = std::fs::copy(&src, &dst) {
                             res.error = Some(format!("copy failed: {e}"));
@@ -163,19 +155,15 @@ async fn apply_edits(
                         }
                         (dst, false)
                     }
-                    "backup" => (src.clone(), true),
-                    _ => (src.clone(), false),
+                    None => (src.clone(), mode == "backup"),
                 };
 
                 match exif::write_one(&target, edit, keep_backup) {
-                    Ok(()) => {
-                        res.ok = true;
-                        res.written = Some(target.to_string_lossy().into_owned());
-                    }
+                    Ok(()) => res.ok = true,
                     Err(e) => {
                         // A copy we failed to tag is worse than no copy at all:
                         // it looks like a finished result but carries old data.
-                        if mode == "copy" {
+                        if copy_dir.is_some() {
                             let _ = std::fs::remove_file(&target);
                         }
                         res.error = Some(e);

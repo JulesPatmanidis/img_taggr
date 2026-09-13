@@ -14,7 +14,7 @@
  *   pickSource()            -> {label, photos} | null
  *   loadThumb(photo)        -> data URL | null
  *   suggestOutput(label)    -> string
- *   save(items, opts)       -> [{path, ok, written, error}]
+ *   save(items, opts)       -> [{path, ok, error}]
  */
 
 /* ── Desktop (Tauri + exiftool) ────────────────────────────────── */
@@ -26,12 +26,9 @@ function tauriBackend() {
   return {
     id: 'tauri',
     caps: {
+      // Save modes this backend can perform, in the order they are offered.
+      saveModes: ['copy', 'backup', 'inplace'],
       outputFolder: true,
-      inPlace: true,
-      backups: true,
-      // exiftool handles every format we accept, lossy WebP included.
-      lossyWebp: true,
-      recursive: true,
     },
 
     async envWarning() {
@@ -70,13 +67,14 @@ function tauriBackend() {
 
 /* ── Browser (WASM + little_exif) ──────────────────────────────── */
 
-/** Formats the WASM engine can write. Lossy WebP is excluded on purpose. */
-const WEB_EXTS = ['jpg', 'jpeg', 'png', 'tif', 'tiff', 'webp', 'heic', 'heif'];
-const extOf = (n) => (n.split('.').pop() || '').toLowerCase();
-
 async function webBackend() {
   const wasm = await import('./wasm/img_taggr_wasm.js');
   await wasm.default('./wasm/img_taggr_wasm_bg.wasm');
+
+  // The engine is the authority on what it can write; the UI never keeps its
+  // own copy of the list, so the two cannot drift apart.
+  const exts = wasm.writable_extensions().split(',');
+  const extOf = (n) => (n.split('.').pop() || '').toLowerCase();
 
   /** photo id -> File. Bytes are re-read on demand so a big folder does not
    *  sit in memory; the File handle itself is cheap. */
@@ -84,9 +82,6 @@ async function webBackend() {
   /** Directory handle when the browser supports writing back in place. */
   let outHandle = null;
   const canWriteFiles = typeof window.showDirectoryPicker === 'function';
-
-  const readBytes = async (photo) =>
-    new Uint8Array(await files.get(photo.path).arrayBuffer());
 
   async function describe(file, id) {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -101,17 +96,11 @@ async function webBackend() {
       path: id,
       name: file.name,
       ext: extOf(file.name),
-      mime: file.type || null,
-      bytes: file.size,
       datetime: meta.datetime ?? null,
       offset: meta.offset ?? null,
       lat: meta.lat ?? null,
       lon: meta.lon ?? null,
-      alt: null,
-      width: null,
-      height: null,
       orientation: meta.orientation ?? 1,
-      camera: null,
       // Browsers expose lastModified, the web equivalent of file mtime — the
       // fallback the timeline seeds undated photos from.
       file_modified: file.lastModified
@@ -122,7 +111,7 @@ async function webBackend() {
 
   async function ingest(fileList, label) {
     files.clear();
-    const accepted = [...fileList].filter((f) => WEB_EXTS.includes(extOf(f.name)));
+    const accepted = [...fileList].filter((f) => wasm.supported(f.name));
     const photos = [];
     let seq = 0;
     for (const f of accepted) {
@@ -142,12 +131,10 @@ async function webBackend() {
   return {
     id: 'web',
     caps: {
-      // Writing back to the source folder needs the File System Access API.
+      // The browser never holds the originals, so copies are the only option.
+      saveModes: ['copy'],
+      // Writing back to a folder needs the File System Access API.
       outputFolder: canWriteFiles,
-      inPlace: false,
-      backups: false,
-      lossyWebp: false,
-      recursive: false,
     },
 
     async envWarning() {
@@ -179,7 +166,7 @@ async function webBackend() {
       input.type = 'file';
       input.multiple = true;
       input.webkitdirectory = true;
-      input.accept = WEB_EXTS.map((e) => `.${e}`).join(',');
+      input.accept = exts.map((e) => `.${e}`).join(',');
       const chosen = await new Promise((resolve) => {
         input.onchange = () => resolve(input.files);
         input.oncancel = () => resolve(null);
@@ -233,25 +220,23 @@ async function webBackend() {
       const written = [];
 
       for (const it of items) {
-        const photo = { path: it.path };
-        const name = files.get(it.path)?.name ?? it.path;
-        if (!files.has(it.path)) {
-          results.push({ path: it.path, ok: false, written: null, error: 'file no longer available' });
+        const file = files.get(it.path);
+        if (!file) {
+          results.push({ path: it.path, ok: false, error: 'file no longer available' });
           continue;
         }
         try {
-          const src = await readBytes(photo);
           const out = wasm.write_meta(
-            src, name,
+            new Uint8Array(await file.arrayBuffer()), file.name,
             it.datetime ?? '', it.offset ?? '',
             it.lat ?? 0, it.lon ?? 0,
             it.lat != null && it.lon != null,
             !!it.clear_gps,
           );
-          written.push({ name, bytes: out });
-          results.push({ path: it.path, ok: true, written: name, error: null });
+          written.push({ name: file.name, bytes: out });
+          results.push({ path: it.path, ok: true, error: null });
         } catch (e) {
-          results.push({ path: it.path, ok: false, written: null, error: String(e?.message ?? e) });
+          results.push({ path: it.path, ok: false, error: String(e?.message ?? e) });
         }
       }
 
@@ -302,7 +287,8 @@ function crc32(buf) {
 
 /** ZIP stores timestamps as DOS date/time words; leaving them zero makes
  *  extracted files claim to be from 1980 (or worse, after normalisation). */
-function dosTime(d = new Date()) {
+function dosTime() {
+  const d = new Date();
   const time = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31);
   const date = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
   return { time, date };
