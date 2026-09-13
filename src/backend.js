@@ -95,7 +95,7 @@ async function webBackend() {
     return {
       path: id,
       name: file.name,
-      ext: extOf(file.name),
+      ext: meta.ext || extOf(file.name),
       datetime: meta.datetime ?? null,
       offset: meta.offset ?? null,
       lat: meta.lat ?? null,

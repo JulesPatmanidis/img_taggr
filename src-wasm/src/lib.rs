@@ -11,6 +11,7 @@
 
 use little_exif::exif_tag::ExifTag;
 use little_exif::filetype::FileExtension;
+use std::io::Cursor;
 use little_exif::metadata::Metadata;
 use little_exif::rational::uR64;
 use wasm_bindgen::prelude::*;
@@ -28,7 +29,7 @@ fn ext_of(filename: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn file_type(filename: &str) -> Option<FileExtension> {
+fn type_from_ext(filename: &str) -> Option<FileExtension> {
     match ext_of(filename).as_str() {
         "jpg" | "jpeg" => Some(FileExtension::JPEG),
         // zTXt keeps the EXIF chunk compressed, which is what other tools expect.
@@ -38,6 +39,31 @@ fn file_type(filename: &str) -> Option<FileExtension> {
         "heic" | "heif" => Some(FileExtension::HEIF),
         _ => None,
     }
+}
+
+/// Canonical extension for a detected format, matching what exiftool's
+/// -FileTypeExtension reports so both backends label a file the same way.
+fn ext_label(ft: FileExtension) -> &'static str {
+    match ft {
+        FileExtension::JPEG => "jpg",
+        FileExtension::PNG { .. } => "png",
+        FileExtension::TIFF => "tif",
+        FileExtension::WEBP => "webp",
+        FileExtension::HEIF => "heic",
+        _ => "",
+    }
+}
+
+/// Decide a file's real format from its magic bytes, falling back to the
+/// filename only when the content is unrecognised.
+///
+/// Extensions lie in practice: a Google Photos export routinely contains JPEGs
+/// named `.png`, and writing those as PNG fails outright. exiftool sniffs
+/// content, so trusting the name here would make the two engines disagree on
+/// real libraries.
+fn file_type(bytes: &[u8], filename: &str) -> Option<FileExtension> {
+    FileExtension::auto_detect(&mut Cursor::new(bytes))
+        .or_else(|| type_from_ext(filename))
 }
 
 /// Decimal degrees -> the (degrees, minutes, seconds) rational triple EXIF stores.
@@ -133,6 +159,13 @@ pub fn supported(filename: &str) -> bool {
     WRITABLE.contains(&ext_of(filename).as_str())
 }
 
+/// True if these bytes are a format the engine can write, whatever the file is
+/// called. Use this when the bytes are already to hand.
+#[wasm_bindgen]
+pub fn supported_bytes(bytes: &[u8], filename: &str) -> bool {
+    file_type(bytes, filename).is_some()
+}
+
 /// The writable extensions, comma separated. The UI builds its file-dialog
 /// filter from this so the list exists in exactly one place.
 #[wasm_bindgen]
@@ -144,11 +177,14 @@ pub fn writable_extensions() -> String {
 /// metadata — not an error, since that is a normal and expected state.
 #[wasm_bindgen]
 pub fn read_meta(bytes: Vec<u8>, filename: &str) -> String {
-    let Some(ft) = file_type(filename) else {
+    let Some(ft) = file_type(&bytes, filename) else {
         return "{}".into();
     };
-    let Ok(md) = Metadata::new_from_vec(&bytes, ft) else {
-        return "{}".into();
+    // A file with no metadata at all is normal, not an error — but we still
+    // know its real format, so report that much.
+    let md = match Metadata::new_from_vec(&bytes, ft) {
+        Ok(md) => md,
+        Err(_) => return format!("{{\"orientation\":1,\"ext\":\"{}\"}}", ext_label(ft)),
     };
 
     let mut datetime = String::new();
@@ -203,7 +239,11 @@ pub fn read_meta(bytes: Vec<u8>, filename: &str) -> String {
         String::new()
     };
 
-    let mut parts = vec![format!("\"orientation\":{orientation}")];
+    let real_ext = ext_label(ft);
+    let mut parts = vec![
+        format!("\"orientation\":{orientation}"),
+        format!("\"ext\":\"{real_ext}\""),
+    ];
     if !iso.is_empty() {
         parts.push(format!("\"datetime\":\"{iso}\""));
     }
@@ -229,7 +269,7 @@ pub fn write_meta(
     has_gps: bool,
     clear_gps: bool,
 ) -> Result<Vec<u8>, JsValue> {
-    let ft = file_type(filename).ok_or_else(|| {
+    let ft = file_type(&bytes, filename).ok_or_else(|| {
         JsValue::from_str(&format!("{}: unsupported format", ext_of(filename)))
     })?;
     write_tags(bytes, ft, datetime, offset, lat, lon, has_gps, clear_gps)
@@ -275,6 +315,22 @@ mod tests {
     fn a_short_or_empty_stamp_is_rejected_rather_than_truncated() {
         assert!(to_exif_stamp("").is_none());
         assert!(to_exif_stamp("2024-05-01").is_none());
+    }
+
+    #[test]
+    fn content_wins_over_a_lying_extension() {
+        // Google Photos exports contain JPEGs named .png; writing those as PNG
+        // fails outright, so the magic bytes must decide.
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 0, 0];
+        assert!(matches!(file_type(&jpeg, "photo.png"), Some(FileExtension::JPEG)));
+        let png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        assert!(matches!(file_type(&png, "photo.jpg"), Some(FileExtension::PNG { .. })));
+    }
+
+    #[test]
+    fn unrecognised_content_falls_back_to_the_extension() {
+        assert!(matches!(file_type(b"not an image at all", "x.jpg"), Some(FileExtension::JPEG)));
+        assert!(file_type(b"not an image at all", "x.txt").is_none());
     }
 
     #[test]
