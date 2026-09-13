@@ -1,0 +1,8 @@
+[package]
+name = "img-taggr-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared photo metadata engine for img-taggr (desktop and browser)"
+
+[dependencies]
+little_exif = "0.6.23"

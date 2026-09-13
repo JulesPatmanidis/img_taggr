@@ -3,8 +3,11 @@
  * The map and timeline views never learn which backend they are driving. Two
  * implementations satisfy the same interface:
  *
- *   tauri — desktop: real folders, exiftool, edits originals or copies
- *   web   — browser: files the user picks, little_exif compiled to WASM
+ *   tauri — desktop: real folders, edits originals or copies
+ *   web   — browser: files the user picks, download or File System Access
+ *
+ * Both run the same metadata engine (img-taggr-core); they differ only in how
+ * files reach it.
  *
  * They differ in what they *can* do, so each advertises `caps` and the UI
  * adapts rather than offering controls that cannot work.
@@ -17,7 +20,7 @@
  *   save(items, opts)       -> [{path, ok, error}]
  */
 
-/* ── Desktop (Tauri + exiftool) ────────────────────────────────── */
+/* ── Desktop (Tauri) ───────────────────────────────────────────── */
 
 function tauriBackend() {
   const invoke = window.__TAURI__.core.invoke;
@@ -32,10 +35,7 @@ function tauriBackend() {
     },
 
     async envWarning() {
-      const env = await invoke('check_env');
-      return env.exiftool
-        ? null
-        : 'exiftool was not found. Install it (dnf install perl-Image-ExifTool) — img-taggr cannot read or write metadata without it.';
+      return null; // nothing to install: the engine is compiled in
     },
 
     async pickSource() {
@@ -65,7 +65,7 @@ function tauriBackend() {
   };
 }
 
-/* ── Browser (WASM + little_exif) ──────────────────────────────── */
+/* ── Browser (WASM) ────────────────────────────────────────────── */
 
 async function webBackend() {
   const wasm = await import('./wasm/img_taggr_wasm.js');

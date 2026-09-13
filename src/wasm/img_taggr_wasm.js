@@ -1,6 +1,6 @@
 /**
- * Read the fields the UI needs, as JSON. Returns `{}` for a file with no
- * metadata — not an error, since that is a normal and expected state.
+ * Read the fields the UI needs, as JSON. `{}` means "nothing readable here",
+ * which is a normal state rather than an error.
  * @param {Uint8Array} bytes
  * @param {string} filename
  * @returns {string}
@@ -31,22 +31,6 @@ export function supported(filename) {
     const ptr0 = passStringToWasm0(filename, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.supported(ptr0, len0);
-    return ret !== 0;
-}
-
-/**
- * True if these bytes are a format the engine can write, whatever the file is
- * called. Use this when the bytes are already to hand.
- * @param {Uint8Array} bytes
- * @param {string} filename
- * @returns {boolean}
- */
-export function supported_bytes(bytes, filename) {
-    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(filename, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.supported_bytes(ptr0, len0, ptr1, len1);
     return ret !== 0;
 }
 

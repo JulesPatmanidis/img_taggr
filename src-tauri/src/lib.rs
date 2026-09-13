@@ -21,21 +21,9 @@ const SUPPORTED: &[&str] = &[
 ];
 
 #[derive(Serialize)]
-pub struct EnvInfo {
-    exiftool: Option<String>,
-}
-
-#[tauri::command]
-fn check_env() -> EnvInfo {
-    EnvInfo {
-        exiftool: exif::version(),
-    }
-}
-
-#[derive(Serialize)]
 pub struct ScanResult {
     photos: Vec<Photo>,
-    /// Files that looked like images but exiftool would not report on.
+    /// Files that looked like images but could not be read.
     unreadable: usize,
     folder: String,
 }
@@ -60,8 +48,8 @@ fn scan_folder(path: String, recursive: bool) -> Result<ScanResult, String> {
                 .map(|e| SUPPORTED.contains(&e.to_ascii_lowercase().as_str()))
                 .unwrap_or(false)
         })
-        // exiftool writes sidecar backups next to originals; never treat one as
-        // a fresh photo or a second pass would re-tag stale copies.
+        // Backups sit next to originals; never treat one as a fresh photo or a
+        // second pass would re-tag stale copies.
         .filter(|p| {
             !p.file_name()
                 .and_then(|n| n.to_str())
@@ -73,13 +61,7 @@ fn scan_folder(path: String, recursive: bool) -> Result<ScanResult, String> {
 
     let total = files.len();
     // Chunked so a folder with 10k images does not build one enormous argv.
-    let mut photos: Vec<Photo> = files
-        .par_chunks(200)
-        .map(|chunk| exif::read_batch(chunk).unwrap_or_default())
-        .reduce(Vec::new, |mut a, mut b| {
-            a.append(&mut b);
-            a
-        });
+    let mut photos: Vec<Photo> = exif::read_batch(&files);
 
     // Order by capture time when known, filename otherwise. This ordering is
     // what the timeline and the map-interpolation both walk, so it matters.
@@ -190,7 +172,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            check_env,
             scan_folder,
             load_thumb,
             apply_edits,

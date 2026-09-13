@@ -1,9 +1,9 @@
 //! Thumbnail generation.
 //!
-//! Two paths, cheapest first: an embedded preview JPEG pulled out by exiftool
-//! (fast, and the only viable route for HEIC without a HEIF decoder), otherwise
-//! a full decode with the `image` crate. Either way the result is a small JPEG
-//! returned as a data URL, so the webview never needs filesystem access.
+//! Decodes with the `image` crate and returns a small JPEG as a data URL, so
+//! the webview never needs filesystem access. HEIC has no decoder here and
+//! yields `None`, exactly as it does in the browser — the UI shows a labelled
+//! placeholder either way.
 
 use base64::Engine;
 use image::imageops::FilterType;
@@ -43,17 +43,7 @@ fn encode_oriented(img: DynamicImage, orientation: u32) -> Option<String> {
 /// Build a thumbnail data URL for `path`, or `None` if the format cannot be
 /// decoded here (the UI falls back to a filename-only tile).
 pub fn make(path: &Path, orientation: u32) -> Option<String> {
-    if let Some(bytes) = crate::exif::embedded_preview(path) {
-        if let Ok(img) = image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg) {
-            // Embedded previews are stored un-rotated, same as the main image,
-            // so the orientation tag applies to them too. Downscale before
-            // rotating: transposing a multi-megapixel preview is pure waste.
-            return encode_oriented(img, orientation);
-        }
-    }
-
-    // Full decode. Covers JPEG/PNG/TIFF/WebP; HEIC only reaches here if it had
-    // no embedded preview, in which case this fails and we return None.
+    // Covers JPEG/PNG/TIFF/WebP. HEIC fails here and returns None.
     let reader = image::ImageReader::open(path)
         .ok()?
         .with_guessed_format()

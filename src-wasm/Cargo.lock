@@ -72,10 +72,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
 
 [[package]]
-name = "img-taggr-wasm"
+name = "img-taggr-core"
 version = "0.1.0"
 dependencies = [
  "little_exif",
+]
+
+[[package]]
+name = "img-taggr-wasm"
+version = "0.1.0"
+dependencies = [
+ "img-taggr-core",
  "wasm-bindgen",
 ]
 
