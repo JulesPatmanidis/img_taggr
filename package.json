@@ -6,7 +6,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build:wasm": "./build-wasm.sh",
-    "web": "./build-wasm.sh && python3 -m http.server 8080 --directory src"
+    "web": "./build-wasm.sh && python3 -m http.server 8080 --directory app"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

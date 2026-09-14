@@ -1,5 +1,6 @@
 node_modules/
-src-tauri/target/
-src-tauri/gen/
-src-wasm/target/
+desktop/target/
+desktop/gen/
+engine/target/
+engine-wasm/target/
 dist/

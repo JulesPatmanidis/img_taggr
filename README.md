@@ -53,7 +53,7 @@ Tags written: `DateTimeOriginal`, `CreateDate`, `ModifyDate`, `OffsetTime*`, and
 
 ## Two targets, one engine
 
-Both targets run the same metadata code: `core/` is a plain Rust crate that
+Both targets run the same metadata code: `engine/` is a plain Rust crate that
 reads and writes entirely in memory. The browser build wraps it in wasm-bindgen;
 the desktop build calls it directly and adds the filesystem work a browser
 cannot do. There is no second implementation, so the two cannot disagree about
@@ -61,7 +61,7 @@ what "save" means — verified by writing a 100-file corpus through both paths a
 diffing the results byte for byte.
 
 The map, timeline and inspector never learn which backend they are driving.
-`src/backend.js` exposes one interface with two implementations, and each
+`app/backend.js` exposes one interface with two implementations, and each
 advertises what it can do so the UI hides controls that cannot work.
 
 | | Web | Desktop |
@@ -96,10 +96,10 @@ HEIC natively in the web build.
 ### Web
 
 ```
-npm run web          # builds the wasm, serves src/ on :8080
+npm run web          # builds the wasm, serves app/ on :8080
 ```
 
-To deploy, build the wasm and publish `src/` as static files — no server-side
+To deploy, build the wasm and publish `app/` as static files — no server-side
 code, so GitHub Pages works.
 
 Chrome and Edge can save straight back to a folder via the File System Access
@@ -116,7 +116,7 @@ sudo dnf install webkit2gtk4.1-devel libsoup3-devel \
                  librsvg2-devel libappindicator-gtk3-devel
 npm install
 npm run dev          # development window
-npm run build        # .deb / .rpm / AppImage in src-tauri/target/release/bundle
+npm run build        # .deb / .rpm / AppImage in desktop/target/release/bundle
 ```
 
 Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`.
@@ -164,20 +164,20 @@ cargo install wasm-bindgen-cli --version 0.2.128
 ## Layout
 
 ```
-src/                 frontend — plain ES modules, no build step
-  backend.js         the seam: Tauri IPC or WASM, one interface
-  state.js           shared state, wall-clock helpers, undo journal
-  map.js             Leaflet view, drag, route interpolation
-  timeline.js        day tracks, lane packing, group time shift
-  app.js             filmstrip, inspector, save flow
-  wasm/              generated — built by ./build-wasm.sh
-core/src/lib.rs      the metadata engine, shared by both targets (unit-tested)
-src-wasm/src/lib.rs  wasm-bindgen wrapper over core — no logic of its own
-src-tauri/src/
-  exif.rs            desktop file I/O around core
-  thumb.rs           thumbnail decode
-  paths.rs           output paths + collision handling (unit-tested)
-  lib.rs             Tauri commands
+app/                    frontend — plain ES modules, no build step
+  backend.js            the seam: Tauri IPC or WASM, one interface
+  state.js              shared state, wall-clock helpers, undo journal
+  map.js                Leaflet view, drag, route interpolation
+  timeline.js           day tracks, lane packing, group time shift
+  app.js                filmstrip, inspector, save flow
+  wasm/                 generated — built by ./build-wasm.sh
+engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)
+engine-wasm/src/lib.rs  wasm-bindgen wrapper over engine — no logic of its own
+desktop/src/
+  exif.rs               file I/O around the engine
+  thumb.rs              thumbnail decode
+  paths.rs              output paths + collision handling (unit-tested)
+  lib.rs                Tauri commands
 ```
 
 Camera RAW is deliberately excluded: rewriting a RAW container is much easier to

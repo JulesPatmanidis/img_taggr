@@ -8,7 +8,7 @@ description = "Browser metadata engine for img-taggr"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-img-taggr-core = { path = "../core" }
+img-taggr-core = { path = "../engine" }
 wasm-bindgen = "0.2.128"
 
 [profile.release]
