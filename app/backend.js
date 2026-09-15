@@ -15,6 +15,7 @@
  * Interface:
  *   id, caps, envWarning()
  *   pickSource()            -> {label, photos} | null
+ *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>)
  *   loadThumb(photo)        -> data URL | null
  *   suggestOutput(label)    -> string
  *   save(items, opts)       -> [{path, ok, error}]
@@ -25,6 +26,11 @@
 function tauriBackend() {
   const invoke = window.__TAURI__.core.invoke;
   const dialog = window.__TAURI__.dialog;
+
+  async function scan(path) {
+    const res = await invoke('scan_folder', { path, recursive: true });
+    return { label: res.folder, photos: res.photos, unreadable: res.unreadable };
+  }
 
   return {
     id: 'tauri',
@@ -42,9 +48,20 @@ function tauriBackend() {
       const picked = await dialog.open({
         directory: true, multiple: false, title: 'Choose a photo folder',
       });
-      if (!picked) return null;
-      const res = await invoke('scan_folder', { path: picked, recursive: true });
-      return { label: res.folder, photos: res.photos, unreadable: res.unreadable };
+      return picked ? scan(picked) : null;
+    },
+
+    watchDrop({ hover, drop }) {
+      // The webview swallows HTML drop events and reports native paths instead.
+      window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(({ payload }) => {
+        if (payload.type === 'enter') hover(true);
+        else if (payload.type === 'leave') hover(false);
+        else if (payload.type === 'drop') {
+          hover(false);
+          // Anything but a folder is reported by the scan itself.
+          if (payload.paths.length) drop(scan(payload.paths[0]));
+        }
+      });
     },
 
     loadThumb(photo) {
@@ -128,6 +145,43 @@ async function webBackend() {
     };
   }
 
+  /** Every file directly inside a directory handle, as the picker sees it. */
+  async function filesIn(dir) {
+    const picked = [];
+    for await (const entry of dir.values()) {
+      if (entry.kind === 'file') picked.push(await entry.getFile());
+    }
+    return picked;
+  }
+
+  /** Same, for the older entry API that browsers without handles expose. */
+  async function filesInEntry(dir) {
+    const reader = dir.createReader();
+    const entries = [];
+    for (let batch; (batch = await new Promise((ok, fail) => reader.readEntries(ok, fail))).length;) {
+      entries.push(...batch);
+    }
+    return Promise.all(entries.filter((e) => e.isFile)
+      .map((e) => new Promise((ok, fail) => e.file(ok, fail))));
+  }
+
+  async function readDrop({ handle, entry, loose }) {
+    // One folder opens like the picker would, keeping its handle so saving can
+    // write back beside it. Loose files open as they are.
+    const h = await handle;
+    if (h?.kind === 'directory') {
+      outHandle = h;
+      return ingest(await filesIn(h), h.name);
+    }
+    if (entry?.isDirectory) {
+      outHandle = null;
+      return ingest(await filesInEntry(entry), entry.name);
+    }
+    if (!loose.length) return null;
+    outHandle = null;
+    return ingest(loose, 'dropped photos');
+  }
+
   return {
     id: 'web',
     caps: {
@@ -153,12 +207,8 @@ async function webBackend() {
         } catch {
           return null; // user dismissed
         }
-        const picked = [];
-        for await (const entry of dir.values()) {
-          if (entry.kind === 'file') picked.push(await entry.getFile());
-        }
         outHandle = dir;
-        return ingest(picked, dir.name);
+        return ingest(await filesIn(dir), dir.name);
       }
 
       // Fallback: a hidden directory input. Works everywhere, no write access.
@@ -173,8 +223,39 @@ async function webBackend() {
         input.click();
       });
       if (!chosen || !chosen.length) return null;
+      outHandle = null;
       const root = chosen[0].webkitRelativePath?.split('/')[0] || 'photos';
       return ingest(chosen, root);
+    },
+
+    watchDrop({ hover, drop }) {
+      // Internal drags use pointer events, so a Files payload is always from outside.
+      const isFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
+      let depth = 0;
+      window.addEventListener('dragenter', (e) => {
+        if (!isFiles(e)) return;
+        e.preventDefault();
+        if (depth++ === 0) hover(true);
+      });
+      window.addEventListener('dragleave', (e) => {
+        if (isFiles(e) && --depth === 0) hover(false);
+      });
+      window.addEventListener('dragover', (e) => { if (isFiles(e)) e.preventDefault(); });
+      window.addEventListener('drop', (e) => {
+        if (!isFiles(e)) return;
+        e.preventDefault();
+        depth = 0;
+        hover(false);
+        // DataTransfer items go dead once the event returns, so take everything
+        // synchronously and resolve it afterwards.
+        const items = [...e.dataTransfer.items].filter((i) => i.kind === 'file');
+        const first = items.length === 1 ? items[0] : null;
+        drop(readDrop({
+          handle: first?.getAsFileSystemHandle?.().catch(() => null),
+          entry: first?.webkitGetAsEntry?.(),
+          loose: items.map((i) => i.getAsFile()).filter(Boolean),
+        }));
+      });
     },
 
     async loadThumb(photo) {
@@ -216,6 +297,13 @@ async function webBackend() {
     },
 
     async save(items, { outDir }) {
+      // A dropped folder comes without write access; the Save click only counts
+      // as the gesture a permission prompt needs until the first slow await.
+      let dest = outHandle;
+      try {
+        if (dest && await dest.requestPermission({ mode: 'readwrite' }) !== 'granted') dest = null;
+      } catch { dest = null; }
+
       const results = [];
       const written = [];
 
@@ -242,9 +330,9 @@ async function webBackend() {
 
       if (!written.length) return results;
 
-      if (canWriteFiles && outHandle) {
+      if (dest) {
         try {
-          const target = await outHandle.getDirectoryHandle(outDir || 'tagged', { create: true });
+          const target = await dest.getDirectoryHandle(outDir || 'tagged', { create: true });
           for (const w of written) {
             const fh = await target.getFileHandle(w.name, { create: true });
             const s = await fh.createWritable();

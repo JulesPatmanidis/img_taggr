@@ -25,12 +25,14 @@ function toast(msg, isErr = false) {
 }
 
 /* ── Loading a folder ──────────────────────────────────────────── */
-async function openFolder() {
+/** `pending` is whatever the backend is producing — a picker or a drop — so
+ *  both routes share one loading path. */
+async function openFolder(pending) {
   $('btnOpen').disabled = true;
   const prevLabel = $('folderLabel').textContent;
   try {
     $('folderLabel').textContent = 'Reading…';
-    const res = await backend.pickSource();
+    const res = await pending;
     if (!res) { $('folderLabel').textContent = prevLabel; return; }
     state.folder = res.label;
     state.selection.clear();
@@ -483,7 +485,8 @@ function renderAll() {
 }
 setOnChange(renderAll);
 
-$('btnOpen').addEventListener('click', openFolder);
+// Called synchronously so the picker still sees the click as a user gesture.
+$('btnOpen').addEventListener('click', () => openFolder(backend.pickSource()));
 $('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
 
 /* ── Boot ──────────────────────────────────────────────────────── */
@@ -500,6 +503,10 @@ TL.initTimeline({
 });
 window.addEventListener('resize', () => { if (state.view === 'time') TL.render(); });
 applyCaps();
+backend.watchDrop({
+  hover: (on) => $('dropZone').classList.toggle('hidden', !on),
+  drop: openFolder,
+});
 renderAll();
 
 backend.envWarning().then((msg) => { if (msg) toast(msg, true); });
