@@ -53,6 +53,10 @@
             <div class="hint">Click the map to place the selected photos.</div>
           </div>
           <div class="overlay bl tools">
+            <div class="seg" id="basemapSeg" role="radiogroup" aria-label="Map style">
+              <button data-basemap="map" role="radio" aria-checked="true">Map</button>
+              <button data-basemap="satellite" role="radio" aria-checked="false">Satellite</button>
+            </div>
             <button id="btnInterp" class="btn sm" disabled
               title="Position un-placed photos along the route between the placed ones, by time">
               Interpolate route

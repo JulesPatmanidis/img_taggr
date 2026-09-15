@@ -25,14 +25,10 @@ export function initMap(el, opts = {}) {
   // Leaflet reads a 3px wobble between press and release as a pan and drops
   // the click, so a slightly shaky click on the map placed nothing.
   L.Draggable.prototype.options.clickTolerance = 10;
-  map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true })
+  map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true, maxZoom: 20 })
     .setView([30, 10], 2);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
-  }).addTo(map);
+  setBasemap(opts.basemap === 'satellite' ? 'satellite' : 'map');
 
   map.on('click', (e) => {
     const sel = selected();
@@ -46,6 +42,35 @@ export function initMap(el, opts = {}) {
   });
 
   return map;
+}
+
+/* Neither needs a key or an account, so the page works for anyone who opens
+   it. (CARTO's styles were nicer but now demand a key.) */
+const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const BASEMAPS = {
+  map: () => [
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxNativeZoom: 19, maxZoom: 20, attribution: OSM,
+    }),
+  ],
+  // Imagery has no names on it, so lay place labels on top to stay oriented.
+  satellite: () => [
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 20,
+      attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics',
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxNativeZoom: 19, maxZoom: 20,
+    }),
+  ],
+};
+let basemap = [];
+
+export function setBasemap(name) {
+  for (const layer of basemap) layer.remove();
+  basemap = BASEMAPS[name]();
+  for (const layer of basemap) layer.addTo(map).bringToBack();
+  map.getContainer().dataset.basemap = name;
 }
 
 export function setShowRoute(v) { showRoute = v; render(); }

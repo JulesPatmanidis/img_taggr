@@ -311,6 +311,18 @@ $('btnClearGps').addEventListener('click', () => {
   const n = applyField((p) => { p.lat = null; p.lon = null; }, (p) => p.lat != null);
   if (n) toast(`Cleared location on ${photoCount(n)}`);
 });
+function showBasemap(name) {
+  for (const b of $('basemapSeg').children) {
+    b.setAttribute('aria-checked', String(b.dataset.basemap === name));
+  }
+}
+$('basemapSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-basemap]');
+  if (!b) return;
+  MapView.setBasemap(b.dataset.basemap);
+  showBasemap(b.dataset.basemap);
+  try { localStorage.setItem('basemap', b.dataset.basemap); } catch { /* ignore */ }
+});
 $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.checked));
 
 /* ── Timeline tools ────────────────────────────────────────────── */
@@ -483,7 +495,10 @@ Strip.initStrip({
   onReveal: (ids) => reveal(ids, { map: true, time: true }),
   dropTargets: [MapView.dropTarget, TL.dropTarget],
 });
-MapView.initMap($('map'), { onReveal: (id) => reveal([id], { time: true }) });
+let savedBasemap = 'map';
+try { savedBasemap = localStorage.getItem('basemap') || 'map'; } catch { /* default */ }
+MapView.initMap($('map'), {
+  basemap: savedBasemap, onReveal: (id) => reveal([id], { time: true }) });
 TL.initTimeline({
   root: $('tl'),
   axis: $('tlAxis'),
@@ -495,6 +510,7 @@ TL.initTimeline({
   onReveal: (id) => reveal([id], { map: true }),
 });
 window.addEventListener('resize', () => { if (timeShown()) TL.render(); });
+showBasemap(savedBasemap === 'satellite' ? 'satellite' : 'map');
 applyCaps();
 backend.watchDrop({
   hover: (on) => $('dropZone').classList.toggle('hidden', !on),
