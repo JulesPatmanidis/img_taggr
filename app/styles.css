@@ -1,19 +1,31 @@
-/* img-taggr — minimal dark shell.
+/* img-taggr — a minimal shell, dark or light to match the system.
    One accent (blue) for selection, one (amber) for unsaved edits. Nothing else
    is allowed to be colourful, so the photos stay the loudest thing on screen. */
 
 :root {
+  color-scheme: dark;
   --bg:        #0c0c0e;
   --panel:     #131316;
   --panel-2:   #1a1a1f;
+  --hover:     #22222a;
   --line:      #26262d;
   --line-2:    #34343d;
+  --line-3:    #43434e;
   --text:      #e9e9ec;
   --muted:     #85858f;
   --accent:    #7aa2f7;
+  --accent-hover: #92b4f8;
   --accent-dim:#2c3a5c;
+  --on-accent: #0b0f1a;
   --edited:    #e0af68;
   --danger:    #f7768e;
+  /* Empty photo tiles, floating toolbars over the stage, alternate day bands. */
+  --tile:      #202027;
+  --float:     rgba(19,19,22,.94);
+  --band:      rgba(255,255,255,.022);
+  --scrim:     rgba(12,12,14,.72);
+  --scroll:    #2c2c34;
+  --scroll-hover: #3a3a45;
   --radius: 7px;
   /* Set at runtime by the strip's drag handle; these are the defaults. */
   --strip: 252px;
@@ -23,6 +35,33 @@
   --chip: 50px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg:        #f3f3f5;
+    --panel:     #ffffff;
+    --panel-2:   #f0f0f3;
+    --hover:     #e7e7ec;
+    --line:      #e1e1e7;
+    --line-2:    #cfcfd7;
+    --line-3:    #b3b3be;
+    --text:      #1c1c21;
+    --muted:     #686873;
+    --accent:    #3a6ddf;
+    --accent-hover: #2d5dc9;
+    --accent-dim:#dbe5fb;
+    --on-accent: #ffffff;
+    --edited:    #b8761c;
+    --danger:    #d0344f;
+    --tile:      #e3e3e9;
+    --float:     rgba(255,255,255,.95);
+    --band:      rgba(0,0,0,.028);
+    --scrim:     rgba(243,243,245,.78);
+    --scroll:    #c9c9d1;
+    --scroll-hover: #b1b1bb;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -60,11 +99,11 @@ body {
   padding: 5px 11px; border-radius: var(--radius); cursor: pointer;
   transition: background .12s, border-color .12s, opacity .12s;
 }
-.btn:hover:not(:disabled) { background: #22222a; border-color: #43434e; }
+.btn:hover:not(:disabled) { background: var(--hover); border-color: var(--line-3); }
 .btn:disabled { opacity: .38; cursor: default; }
 .btn.sm { padding: 4px 9px; font-size: 12px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #0b0f1a; font-weight: 600; }
-.btn.primary:hover:not(:disabled) { background: #92b4f8; border-color: #92b4f8; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 .link {
   background: none; border: none; color: var(--accent);
   font: inherit; font-size: 11px; cursor: pointer; padding: 0;
@@ -91,7 +130,7 @@ main { flex: 1; display: flex; min-height: 0; }
   background: none; border: 1px solid var(--line-2); border-radius: 20px; padding: 2px 8px;
 }
 .filter b { font-weight: 600; color: var(--text); margin-left: 2px; }
-.filter:hover:not(:disabled) { border-color: #43434e; }
+.filter:hover:not(:disabled) { border-color: var(--line-3); }
 .filter.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
 .filter:disabled { opacity: .45; cursor: default; }
 .seedRow { padding: 6px 10px 0; }
@@ -108,7 +147,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .card .th {
   position: relative;
   width: var(--thumb); height: var(--thumb); flex: 0 0 var(--thumb);
-  border-radius: 5px; background: #202027 center/cover no-repeat;
+  border-radius: 5px; background: var(--tile) center/cover no-repeat;
 }
 /* Browsers cannot decode every format we can edit (Chrome has no HEIC or TIFF
    decoder). Name the format so an empty tile reads as a missing preview rather
@@ -150,14 +189,14 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .dragGhost {
   position: fixed; left: 0; top: 0; z-index: 2400; pointer-events: none;
   width: 46px; height: 46px; border-radius: 6px; opacity: .9;
-  background: #202027 center/cover no-repeat; border: 2px solid var(--muted);
+  background: var(--tile) center/cover no-repeat; border: 2px solid var(--muted);
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
 .dragGhost.ok { border-color: var(--accent); }
 .dragGhost[data-count]::after {
   content: attr(data-count); position: absolute; right: -8px; top: -8px;
   min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
-  font-size: 10px; font-weight: 700; background: var(--accent); color: #0b0f1a;
+  font-size: 10px; font-weight: 700; background: var(--accent); color: var(--on-accent);
 }
 
 #stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -172,9 +211,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 
 .maxBtn {
   display: flex; padding: 6px; cursor: pointer; color: var(--text);
-  background: rgba(19,19,22,.94); border: 1px solid var(--line-2); border-radius: var(--radius);
+  background: var(--float); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
-.maxBtn:hover { border-color: #43434e; }
+.maxBtn:hover { border-color: var(--line-3); }
 .maxBtn .shrink, .maxBtn[aria-pressed="true"] .grow { display: none; }
 .maxBtn[aria-pressed="true"] .shrink { display: block; }
 
@@ -186,18 +225,18 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .overlay.bl { bottom: 10px; left: 10px; display: flex; gap: 6px; align-items: center; }
 .overlay.br { bottom: 10px; right: 10px; max-width: 42%; text-align: right; }
 .tools .btn, .tools .chk {
-  background: rgba(19,19,22,.94); backdrop-filter: blur(6px);
+  background: var(--float); backdrop-filter: blur(6px);
   border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .hint {
   display: inline-block; padding: 5px 10px; font-size: 11px; color: var(--muted);
-  background: rgba(19,19,22,.92); backdrop-filter: blur(6px);
+  background: var(--float); backdrop-filter: blur(6px);
   border: 1px solid var(--line); border-radius: var(--radius);
 }
 /* Segmented control: a pair of mutually exclusive buttons. */
 .seg {
   display: flex; padding: 2px; gap: 2px;
-  background: rgba(19,19,22,.94); border: 1px solid var(--line-2); border-radius: var(--radius);
+  background: var(--float); border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .seg button {
   font: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
@@ -249,7 +288,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 }
 .leaflet-container { background: #e8e4dc; font: inherit; }
 #map[data-basemap="satellite"] { background: #1b1f1d; }
-.leaflet-control-attribution { background: rgba(19,19,22,.85) !important; color: var(--muted) !important; font-size: 10px !important; }
+.leaflet-control-attribution { background: var(--float) !important; color: var(--muted) !important; font-size: 10px !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
 .leaflet-bar a { background: var(--panel-2) !important; color: var(--text) !important; border-color: var(--line-2) !important; }
 
@@ -274,7 +313,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   font-size: 11px; font-weight: 700; line-height: 16px;
   background: #fff; color: #111; box-shadow: 0 1px 4px rgba(0,0,0,.45);
 }
-.pin.cluster.sel b { background: var(--accent); color: #0b0f1a; }
+.pin.cluster.sel b { background: var(--accent); color: var(--on-accent); }
 /* A stack of photos, drawn as a second card peeking out behind the first. */
 .pin.cluster { box-shadow: 4px -4px 0 -1px #fff, 4px -4px 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.55); }
 
@@ -298,12 +337,12 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .tlTrack.dropping { box-shadow: inset 0 0 0 2px var(--accent); }
 .tlGrid { position: absolute; inset: 0; pointer-events: none; }
 .tlBand { position: absolute; top: 0; bottom: 0; }
-.tlBand.odd { background: rgba(255,255,255,.022); }
+.tlBand.odd { background: var(--band); }
 .tlTick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .tlTick.day { background: var(--line-2); width: 2px; }
 .tlBox {
   position: absolute; z-index: 10; pointer-events: none;
-  border: 1px solid var(--accent); background: rgba(122,162,247,.12);
+  border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .tlEmpty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -314,11 +353,11 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   position: absolute; top: 6px;
   width: var(--chip); height: var(--chip); transform: translateX(-50%);
   border-radius: 5px; border: 2px solid var(--line-2);
-  background: #202027 center/cover no-repeat;
+  background: var(--tile) center/cover no-repeat;
   cursor: grab; touch-action: none;
   box-shadow: 0 2px 5px rgba(0,0,0,.5);
 }
-.chip.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.25); z-index: 3; }
+.chip.sel { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); z-index: 3; }
 .chip.edited { border-color: var(--edited); }
 .chip.drag { cursor: grabbing; z-index: 9; opacity: .92; }
 /* Drop indicator: a guide at the exact landing point, labelled with the time
@@ -333,7 +372,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   padding: 3px 6px; border-radius: 4px; white-space: nowrap;
 }
 .dropline .lab {
-  top: 4px; background: var(--accent); color: #0b0f1a; font-weight: 700;
+  top: 4px; background: var(--accent); color: var(--on-accent); font-weight: 700;
 }
 .dropline .note {
   bottom: 8px; background: var(--panel-2); color: var(--text);
@@ -379,7 +418,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .insThumb[data-count]:not([data-count=""])::before {
   content: attr(data-count); position: absolute; right: -6px; bottom: -6px;
   min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
-  font-size: 10px; font-weight: 600; background: var(--accent); color: #0b0f1a;
+  font-size: 10px; font-weight: 600; background: var(--accent); color: var(--on-accent);
 }
 .insName { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .selLabel { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -394,7 +433,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .insFoot { border-top: 1px solid var(--line); padding-top: 12px; }
 .pill {
   font-size: 10px; padding: 1px 7px; border-radius: 20px;
-  background: rgba(224,175,104,.14); color: var(--edited); border: 1px solid rgba(224,175,104,.3);
+  color: var(--edited);
+  background: color-mix(in srgb, var(--edited) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--edited) 32%, transparent);
 }
 .fld { display: flex; flex-direction: column; gap: 3px; }
 .fld > span, .fld > label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
@@ -460,7 +501,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   display: flex; gap: 9px; align-items: flex-start; padding: 9px 11px;
   border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
 }
-.radio:has(input:checked) { border-color: var(--accent); background: rgba(122,162,247,.07); }
+.radio:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .radio div { display: flex; flex-direction: column; gap: 1px; }
 .radio b { font-size: 12px; font-weight: 600; }
 .radio span { font-size: 11px; }
@@ -474,7 +515,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .dropZone {
   position: fixed; inset: 0; z-index: 2500; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(12,12,14,.72);
+  background: var(--scrim);
 }
 .dropZone div {
   padding: 28px 44px; font-size: 15px; font-weight: 600;
@@ -492,8 +533,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .toast.err { border-color: var(--danger); color: var(--danger); }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: #2c2c34; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* Pulse on reveal, so a pin or chip that just scrolled into view is found. */
@@ -511,7 +552,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 }
 .peekImg {
   position: relative; height: 210px; border-radius: 5px;
-  background: #202027 center/contain no-repeat;
+  background: var(--tile) center/contain no-repeat;
 }
 .peekImg:not([data-ext=""])::after {
   content: attr(data-ext) " — no preview"; position: absolute; inset: 0;
