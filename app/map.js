@@ -19,6 +19,9 @@ let route = null;
 let showRoute = true;
 
 export function initMap(el) {
+  // Leaflet reads a 3px wobble between press and release as a pan and drops
+  // the click, so a slightly shaky click on the map placed nothing.
+  L.Draggable.prototype.options.clickTolerance = 10;
   map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true })
     .setView([30, 10], 2);
   L.control.zoom({ position: 'topright' }).addTo(map);
