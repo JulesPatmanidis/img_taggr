@@ -15,6 +15,7 @@
       <div id="folderLabel" class="folder muted"></div>
       <div class="spacer"></div>
       <button id="btnUndo" class="btn" disabled title="Undo — Ctrl+Z">Undo</button>
+      <button id="btnRedo" class="btn" disabled title="Redo — Ctrl+Shift+Z">Redo</button>
       <button id="btnSave" class="btn primary" disabled>Save</button>
     </header>
 
@@ -47,7 +48,6 @@
               title="Position un-placed photos along the route between the placed ones, by time">
               Interpolate route
             </button>
-            <button id="btnClearGps" class="btn sm" disabled>Clear location</button>
             <label class="chk"><input type="checkbox" id="chkPath" checked /> Route</label>
           </div>
         </div>
@@ -76,13 +76,6 @@
           </div>
           <div class="days" id="days"></div>
           <div class="overlay bl tools">
-            <div class="shift" id="shiftBar">
-              <span class="muted">Shift selection</span>
-              <button class="btn sm" data-shift="-3600">−1h</button>
-              <button class="btn sm" data-shift="-60">−1m</button>
-              <button class="btn sm" data-shift="60">+1m</button>
-              <button class="btn sm" data-shift="3600">+1h</button>
-            </div>
             <div class="shift" id="zoomBar">
               <span class="muted">Zoom</span>
               <button class="btn sm on" data-zoom="1">Day</button>
@@ -92,32 +85,51 @@
           </div>
         </div>
       </section>
-    </main>
 
-    <footer class="inspector">
-      <div class="insLeft">
-        <span id="selLabel" class="selLabel">Nothing selected</span>
-        <span id="editLabel" class="pill hidden"></span>
-      </div>
-      <div class="fields">
-        <div class="fld">
-          <label for="fDt">Date &amp; time</label>
-          <div class="dt">
-            <input id="fDt" type="text" inputmode="numeric" disabled />
-            <button id="btnCal" class="calBtn" type="button" aria-label="Open calendar" disabled>
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" stroke-width="1.3"/></svg>
-            </button>
+      <!-- ── Inspector ──────────────────────────────────────────── -->
+      <aside id="inspector" class="inspector" aria-label="Inspector">
+        <button id="btnIns" class="insToggle" type="button" aria-expanded="true"
+          aria-controls="insBody" aria-label="Hide inspector" title="Hide inspector">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div id="insBody" class="insBody">
+          <div class="insHead">
+            <div id="insThumb" class="insThumb"></div>
+            <div class="insName">
+              <span id="selLabel" class="selLabel">Nothing selected</span>
+              <span id="editLabel" class="pill hidden"></span>
+            </div>
+          </div>
+
+          <section class="insSec">
+            <h3>Time</h3>
+            <div class="fld">
+              <label for="fDt">Date &amp; time</label>
+              <div class="dt">
+                <input id="fDt" type="text" inputmode="numeric" disabled />
+                <button id="btnCal" class="calBtn" type="button" aria-label="Open calendar" disabled>
+                  <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" stroke-width="1.3"/></svg>
+                </button>
+              </div>
+            </div>
+            <label class="fld"><span>UTC offset</span><input id="fTz" type="text" placeholder="+02:00" disabled /></label>
+            <label class="fld"><span>Shift by</span><input id="fShift" type="text" placeholder="+3h47m" disabled aria-describedby="shiftHelp" /></label>
+            <p id="shiftHelp" class="help">Moves every selected photo, keeping the gaps between them. Press Enter to apply.</p>
+          </section>
+
+          <section class="insSec">
+            <h3>Location</h3>
+            <label class="fld"><span>Latitude</span><input id="fLat" type="text" placeholder="—" disabled /></label>
+            <label class="fld"><span>Longitude</span><input id="fLon" type="text" placeholder="—" disabled /></label>
+            <button id="btnClearGps" class="btn sm" disabled>Clear location</button>
+          </section>
+
+          <div class="insFoot">
+            <button id="btnRevert" class="btn sm" disabled>Revert changes</button>
           </div>
         </div>
-        <label class="fld sm"><span>UTC</span><input id="fTz" type="text" placeholder="+02:00" disabled /></label>
-        <span class="sep"></span>
-        <label class="fld"><span>Latitude</span><input id="fLat" type="text" placeholder="—" disabled /></label>
-        <label class="fld"><span>Longitude</span><input id="fLon" type="text" placeholder="—" disabled /></label>
-      </div>
-      <div class="insRight">
-        <button id="btnRevert" class="btn sm" disabled>Revert</button>
-      </div>
-    </footer>
+      </aside>
+    </main>
   </div>
 
   <!-- ── Save sheet ─────────────────────────────────────────────── -->

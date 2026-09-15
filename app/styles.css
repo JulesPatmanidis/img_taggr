@@ -18,6 +18,7 @@
   /* Set at runtime by the strip's drag handle; these are the defaults. */
   --strip: 252px;
   --split: 58%;
+  --inspector: 256px;
   --thumb: 76px;
   --chip: 50px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -262,25 +263,59 @@ main { flex: 1; display: flex; min-height: 0; }
 .chip.sel .chipTime, .chip.drag .chipTime { display: block; }
 
 /* ── Inspector ────────────────────────────────────────────────── */
+/* A side panel: vertical room is what the split stage is short of. Collapses
+   to a rail rather than disappearing, so the stage never jumps on selection. */
 .inspector {
-  flex: 0 0 52px; display: flex; align-items: center; gap: 14px;
-  padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line);
+  position: relative; flex: 0 0 var(--inspector); width: var(--inspector);
+  background: var(--panel); border-left: 1px solid var(--line);
+  overflow-y: auto; overflow-x: hidden;
 }
-.insLeft { display: flex; align-items: center; gap: 8px; min-width: 168px; }
-.selLabel { font-size: 12px; }
+.inspector.collapsed { flex-basis: 30px; width: 30px; overflow: hidden; }
+.inspector.collapsed .insBody { display: none; }
+.insToggle {
+  position: absolute; top: 8px; right: 6px; z-index: 1;
+  display: flex; padding: 4px; border: none; border-radius: 5px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.insToggle:hover { color: var(--text); background: var(--panel-2); }
+.inspector.collapsed .insToggle { right: 4px; transform: rotate(180deg); }
+.insBody { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+.insHead { display: flex; gap: 10px; align-items: center; padding-right: 22px; min-height: 48px; }
+.insThumb {
+  position: relative; flex: 0 0 48px; height: 48px; border-radius: 6px;
+  background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--line);
+}
+.insThumb[data-ext]:not([data-ext=""])::after {
+  content: attr(data-ext); position: absolute; inset: 0; display: flex;
+  align-items: center; justify-content: center;
+  font-size: 9px; color: var(--muted); text-transform: uppercase;
+}
+.insThumb[data-count]:not([data-count=""])::before {
+  content: attr(data-count); position: absolute; right: -6px; bottom: -6px;
+  min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
+  font-size: 10px; font-weight: 600; background: var(--accent); color: #0b0f1a;
+}
+.insName { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.selLabel { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.insSec { display: flex; flex-direction: column; gap: 9px; }
+.insSec h3 {
+  margin: 0; padding-bottom: 5px; border-bottom: 1px solid var(--line);
+  font-size: 11px; font-weight: 600; color: var(--text);
+}
+.insSec > .btn { align-self: flex-start; }
+.help { margin: -4px 0 0; font-size: 11px; line-height: 1.35; color: var(--muted); }
+.insFoot { border-top: 1px solid var(--line); padding-top: 12px; }
 .pill {
   font-size: 10px; padding: 1px 7px; border-radius: 20px;
   background: rgba(224,175,104,.14); color: var(--edited); border: 1px solid rgba(224,175,104,.3);
 }
-.fields { display: flex; align-items: center; gap: 10px; flex: 1; }
-.fld { display: flex; flex-direction: column; gap: 2px; }
+.fld { display: flex; flex-direction: column; gap: 3px; }
 .fld > span, .fld > label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .fld input {
   font: inherit; font-family: var(--mono); font-size: 12px;
   color: var(--text); background: var(--panel-2);
-  border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 7px; width: 122px;
+  border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 7px; width: 100%;
 }
-.fld.sm input { width: 68px; }
 .fld input:focus { outline: none; border-color: var(--accent); }
 .fld input:disabled { opacity: .4; }
 .fld input.multi { color: var(--muted); font-style: italic; }
@@ -288,7 +323,7 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* Date-time field with its calendar button tucked inside the right edge. */
 .dt { position: relative; display: flex; }
-.fld .dt input { width: 172px; padding-right: 26px; }
+.fld .dt input { padding-right: 26px; }
 .calBtn {
   position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
   display: flex; padding: 3px; border: none; border-radius: 4px;
@@ -321,7 +356,6 @@ main { flex: 1; display: flex; min-height: 0; }
 .calDay.out { color: var(--muted); opacity: .6; }
 .calDay.on { background: var(--accent-dim); }
 .calGrid:focus .calDay.focus { border-color: var(--accent); }
-.sep { width: 1px; height: 26px; background: var(--line); }
 
 /* ── Save sheet ───────────────────────────────────────────────── */
 .modalWrap {
@@ -362,7 +396,7 @@ main { flex: 1; display: flex; min-height: 0; }
 
 /* ── Toast ────────────────────────────────────────────────────── */
 .toast {
-  position: fixed; bottom: 66px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   z-index: 3000; max-width: 60ch;
   padding: 8px 14px; font-size: 12px;
   background: var(--panel-2); border: 1px solid var(--line-2);

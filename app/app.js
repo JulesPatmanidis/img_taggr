@@ -2,7 +2,7 @@
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, commit, undo, redo,
-  normDt, roundCoord, clickSelect, dayOf, timeOf, seedDay, photoCount,
+  normDt, roundCoord, clickSelect, dayOf, timeOf, seedDay, photoCount, fmtDur,
   EDITABLE, rebase, revertToBaseline, resetHistory,
 } from './state.js';
 import * as MapView from './map.js';
@@ -179,12 +179,18 @@ function setField(el, val, fmt = (v) => v) {
 function renderInspector(edited = editedPhotos().length) {
   const sel = selected();
   const has = sel.length > 0;
-  for (const id of ['fDt', 'btnCal', 'fTz', 'fLat', 'fLon']) $(id).disabled = !has;
+  for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
+  $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
 
   $('selLabel').textContent = !has
     ? 'Nothing selected'
     : sel.length === 1 ? sel[0].name : `${sel.length} photos selected`;
+  const thumb = $('insThumb');
+  const shown = sel.find((p) => p.thumb) ?? sel[0];
+  thumb.style.backgroundImage = shown?.thumb ? `url('${shown.thumb}')` : '';
+  thumb.dataset.ext = shown && !shown.thumb ? (shown.ext || '?') : '';
+  thumb.dataset.count = sel.length > 1 ? String(sel.length) : '';
 
   $('editLabel').classList.toggle('hidden', edited === 0);
   $('editLabel').textContent = `${edited} unsaved`;
@@ -250,6 +256,31 @@ for (const [id, key, lim] of [['fLat', 'lat', 90], ['fLon', 'lon', 180]]) {
     applyField((p) => { p[key] = roundCoord(v); });
   });
 }
+
+/** "+3h47m", "-15s", "1d 2h", "-0:15" → seconds, or null if unreadable. */
+function parseShift(text) {
+  const t = text.replace(/−/g, '-').replace(/\s+/g, '');
+  let m = /^([+-]?)(\d+):(\d{1,2})(?::(\d{1,2}))?$/.exec(t);
+  if (m) return (m[1] === '-' ? -1 : 1) * (+m[2] * 3600 + +m[3] * 60 + +(m[4] ?? 0));
+  m = /^([+-]?)(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i.exec(t);
+  if (!m || !(m[2] || m[3] || m[4] || m[5])) return null;
+  return (m[1] === '-' ? -1 : 1)
+    * ((+m[2] || 0) * 86400 + (+m[3] || 0) * 3600 + (+m[4] || 0) * 60 + (+m[5] || 0));
+}
+
+$('fShift').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { e.target.value = ''; return; }
+  if (e.key !== 'Enter') return;
+  const sec = parseShift(e.target.value);
+  if (sec === null) { toast('Shift must look like +3h47m, -15s or -0:15', true); return; }
+  if (!sec) return;
+  const undated = selected().filter((p) => !p.datetime).length;
+  const n = TL.shiftSelection(sec);
+  if (!n) { toast('None of the selected photos has a date to shift', true); return; }
+  e.target.value = '';
+  toast(`Shifted ${photoCount(n)} by ${fmtDur(sec)}`
+    + (undated ? ` · ${undated} without a date left alone` : ''));
+});
 
 $('btnRevert').addEventListener('click', () => {
   const n = applyField(revertToBaseline, isEdited);
@@ -391,13 +422,6 @@ $('btnSeedDates').addEventListener('click', () => {
   toast(`Dated ${photoCount(undated.length)} from file timestamps — now drag to correct them`);
 });
 
-
-$('shiftBar').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-shift]');
-  if (!b) return;
-  const n = TL.shiftSelection(+b.dataset.shift);
-  if (!n) toast('Select photos that already have a date first', true);
-});
 $('zoomBar').addEventListener('click', (e) => {
   const b = e.target.closest('[data-zoom]');
   if (!b) return;
@@ -534,9 +558,9 @@ function renderAll() {
   let placed = 0;
   for (const p of state.photos) if (p.lat != null && ++placed >= 2) break;
 
-  $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
   $('btnInterp').disabled = placed < 2;
   $('btnUndo').disabled = state.undo.length === 0;
+  $('btnRedo').disabled = state.redo.length === 0;
   $('btnSave').disabled = edited === 0;
   $('btnSave').textContent = edited ? `Save ${edited}` : 'Save';
 }
@@ -545,6 +569,24 @@ setOnChange(renderAll);
 // Called synchronously so the picker still sees the click as a user gesture.
 $('btnOpen').addEventListener('click', () => openFolder(backend.pickSource()));
 $('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
+$('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
+
+/* ── Inspector panel ───────────────────────────────────────────── */
+function setInspectorOpen(open) {
+  $('inspector').classList.toggle('collapsed', !open);
+  const b = $('btnIns');
+  b.setAttribute('aria-expanded', String(open));
+  b.setAttribute('aria-label', open ? 'Hide inspector' : 'Show inspector');
+  b.title = open ? 'Hide inspector' : 'Show inspector';
+  try { localStorage.setItem('inspector', open ? 'open' : 'closed'); } catch { /* ignore */ }
+  resizeViews();
+}
+$('btnIns').addEventListener('click', () => {
+  setInspectorOpen($('inspector').classList.contains('collapsed'));
+});
+try {
+  if (localStorage.getItem('inspector') === 'closed') setInspectorOpen(false);
+} catch { /* open by default */ }
 
 /* ── Boot ──────────────────────────────────────────────────────── */
 MapView.initMap($('map'));
