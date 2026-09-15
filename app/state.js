@@ -33,14 +33,17 @@ export function dtToMs(dt) {
   if (!dt) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(dt);
   if (!m) return null;
-  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  // Date.UTC maps years 0–99 onto 1900–1999, so set the year separately.
+  const d = new Date(Date.UTC(2000, +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+  d.setUTCFullYear(+m[1]);
+  return d.getTime();
 }
 
 /** Inverse of dtToMs. */
 export function msToDt(ms) {
   const d = new Date(ms);
   return (
-    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
     `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
   );
 }
