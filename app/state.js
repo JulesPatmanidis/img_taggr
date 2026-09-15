@@ -25,7 +25,7 @@ export const setOnChange = (fn) => { onChange = fn; };
 export const emit = () => onChange();
 
 /* ── Wall-clock helpers ────────────────────────────────────────── */
-const pad = (n, w = 2) => String(n).padStart(w, '0');
+export const pad = (n, w = 2) => String(n).padStart(w, '0');
 
 /** "YYYY-MM-DDTHH:MM:SS" -> ms in a fictional UTC frame. */
 export function dtToMs(dt) {

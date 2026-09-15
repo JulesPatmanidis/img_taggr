@@ -141,8 +141,9 @@ function common(sel, fn) {
 }
 
 function setField(el, val, fmt = (v) => v) {
-  // A re-render must never wipe what someone is typing.
-  if (document.activeElement === el) return;
+  // A re-render must never wipe what someone is typing. Once they commit, the
+  // field is fair game again: bad input resets, good input is reformatted.
+  if (el.dataset.typing) return;
   el.classList.toggle('multi', val === MULTI);
   if (val === MULTI) {
     el.value = '';
@@ -205,23 +206,33 @@ function applyField(fn, filter = () => true) {
   return sel.length;
 }
 
-const dtField = dateTimeField($('fDt'), {
-  onCommit: ({ date, time }) => applyField((p) => {
+/** Set the date and/or time of the selection; a null half is left as it is. */
+function applyDateTime({ date, time }) {
+  applyField((p) => {
     // A photo with no date at all needs both halves before either means anything.
     const d = date ?? dayOf(p.datetime) ?? seedDay(p);
     const t = time ?? timeOf(p.datetime) ?? '12:00:00';
     p.datetime = normDt(`${d}T${t}`);
-  }),
-});
+  });
+}
+
+const dtField = dateTimeField($('fDt'), { onCommit: applyDateTime });
 calendar($('btnCal'), {
   current: () => {
     const days = selected().map((p) => dayOf(p.datetime)).filter(Boolean);
     return days.length ? days[0] : null;
   },
-  onPick: (day) => dtField.setDate(day),
+  onPick: (day) => applyDateTime({ date: day, time: null }),
+  absorbIn: [$('map')],
 });
 
+for (const id of ['fTz', 'fLat', 'fLon']) {
+  $(id).addEventListener('input', (e) => { e.target.dataset.typing = '1'; });
+  $(id).addEventListener('blur', (e) => { delete e.target.dataset.typing; });
+}
+
 $('fTz').addEventListener('change', (e) => {
+  delete e.target.dataset.typing;
   const v = e.target.value.trim();
   if (v && !/^[+-]\d{2}:\d{2}$/.test(v)) { toast('UTC offset must look like +02:00', true); renderInspector(); return; }
   applyField((p) => { p.offset = v || null; });
@@ -229,6 +240,7 @@ $('fTz').addEventListener('change', (e) => {
 
 for (const [id, key, lim] of [['fLat', 'lat', 90], ['fLon', 'lon', 180]]) {
   $(id).addEventListener('change', (e) => {
+    delete e.target.dataset.typing;
     const raw = e.target.value.trim();
     if (raw === '') { applyField((p) => { p[key] = null; }); return; }
     const v = Number(raw);

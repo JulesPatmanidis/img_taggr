@@ -194,9 +194,9 @@ async function webBackend() {
   async function readDrop({ handle, entry, loose }) {
     // One folder opens like the picker would, keeping its handle so saving can
     // write back beside it. Loose files open as they are.
-    const h = await handle;
-    if (h?.kind === 'directory') {
-      return ingest(await filesIn(h), h.name, h);
+    const dir = await handle;
+    if (dir?.kind === 'directory') {
+      return ingest(await filesIn(dir), dir.name, dir);
     }
     if (entry?.isDirectory) {
       return ingest(await filesInEntry(entry), entry.name);

@@ -15,21 +15,26 @@
  * photo's own time and vice versa.
  */
 
-import { dtToMs, msToDt } from './state.js';
+import { dtToMs, msToDt, dayOf, timeOf, pad } from './state.js';
 
 /** [start, end] of each segment in "YYYY-MM-DD HH:MM:SS". */
 const SEGS = [[0, 4], [5, 7], [8, 10], [11, 13], [14, 16], [17, 19]];
 const MIN = [1, 1, 1, 0, 0, 0];
 const MAX = [9999, 12, 31, 23, 59, 59];
-/** Seconds per unit for the segments that step by plain arithmetic. */
-const UNIT = [0, 0, 86400, 3600, 60, 1];
+/** Seconds per unit; years and months have no fixed length and step apart. */
+const UNIT = [null, null, 86400, 3600, 60, 1];
 
-const pad = (n, w) => String(n).padStart(w, '0');
 /** Days in month `m` (1–12) of year `y`: day 0 of the next month. */
 function daysIn(y, m) {
   const d = new Date(0);
   d.setUTCFullYear(y, m, 0);
   return d.getUTCDate();
+}
+
+/** [year, month] `n` months on from month `m` (1–12) of year `y`. */
+function addMonths(y, m, n) {
+  const i = y * 12 + m - 1 + n;
+  return [Math.floor(i / 12), ((i % 12) + 12) % 12 + 1];
 }
 
 const parts = (text) => SEGS.map(([a, b]) => +text.slice(a, b));
@@ -44,7 +49,7 @@ const toDt = (text) => text.replace(' ', 'T');
  * @param input    a text <input>
  * @param opts.onCommit({date, time}) — each "YYYY-MM-DD" / "HH:MM:SS", or null
  *                 when that half was left alone
- * @returns {set(value, {mixed, fallback}), setDate(day), isEditing()}
+ * @returns {set(value, {mixed, fallback})}
  */
 export function dateTimeField(input, { onCommit }) {
   input.spellcheck = false;
@@ -98,11 +103,8 @@ export function dateTimeField(input, { onCommit }) {
     settle();
     const p = parts(draft);
     if (seg === 0) p[0] = Math.min(MAX[0], Math.max(MIN[0], p[0] + dir));
-    else if (seg === 1) {
-      const m = p[1] - 1 + dir;
-      p[0] += Math.floor(m / 12);
-      p[1] = ((m % 12) + 12) % 12 + 1;
-    } else {
+    else if (seg === 1) [p[0], p[1]] = addMonths(p[0], p[1], dir);
+    else {
       draft = toText(msToDt(dtToMs(toDt(draft)) + dir * UNIT[seg] * 1000));
       select();
       return;
@@ -130,11 +132,9 @@ export function dateTimeField(input, { onCommit }) {
   function commit() {
     settle();
     if (!editing()) return;
-    const text = draft;
-    const was = start;
+    const date = dayOf(draft) !== dayOf(start) ? dayOf(draft) : null;
+    const time = timeOf(draft) !== timeOf(start) ? timeOf(draft) : null;
     start = draft;
-    const date = text.slice(0, 10) !== was.slice(0, 10) ? text.slice(0, 10) : null;
-    const time = text.slice(11) !== was.slice(11) ? text.slice(11) : null;
     if (date || time) onCommit({ date, time });
   }
 
@@ -189,8 +189,9 @@ export function dateTimeField(input, { onCommit }) {
       select();
     } else if (e.key === 'Escape') {
       // Esc here means "undo my typing", not "clear the selection".
+      // Drop the edit before blurring, or the blur would commit what was typed.
       e.stopPropagation();
-      draft = start;
+      end({ keep: false });
       input.blur();
     }
   });
@@ -221,18 +222,13 @@ export function dateTimeField(input, { onCommit }) {
       // Never overwrite what the user is in the middle of typing.
       if (!editing()) showIdle();
     },
-    /** Commit a whole day from outside the field, such as the calendar. */
-    setDate(day) {
-      onCommit({ date: day, time: null });
-    },
-    isEditing: editing,
   };
 }
 
 /* ── Calendar popover ──────────────────────────────────────────── */
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
-const dayStr = (ms) => msToDt(ms).slice(0, 10);
+const dayAt = (ms) => dayOf(msToDt(ms));
 const DAY_MS = 86400000;
 
 /**
@@ -241,8 +237,10 @@ const DAY_MS = 86400000;
  *
  * @param opts.current() "YYYY-MM-DD" to open on, or null for today
  * @param opts.onPick(day)
+ * @param opts.absorbIn  elements where a bare click edits photos, so the click
+ *                 that closes the calendar must not also land there
  */
-export function calendar(button, { current, onPick }) {
+export function calendar(button, { current, onPick, absorbIn = [] }) {
   const pop = document.createElement('div');
   pop.className = 'cal hidden';
   pop.setAttribute('role', 'dialog');
@@ -262,7 +260,7 @@ export function calendar(button, { current, onPick }) {
   let chosen = null;
 
   function draw() {
-    const focus = dayStr(focusMs);
+    const focus = dayAt(focusMs);
     const [y, m] = [+focus.slice(0, 4), +focus.slice(5, 7)];
     const first = dtToMs(`${pad(y, 4)}-${pad(m, 2)}-01T00:00:00`);
     const lead = (new Date(first).getUTCDay() + 6) % 7; // Monday first
@@ -272,7 +270,7 @@ export function calendar(button, { current, onPick }) {
     const frag = document.createDocumentFragment();
     for (let i = 0; i < 42; i++) {
       const ms = first + (i - lead) * DAY_MS;
-      const d = dayStr(ms);
+      const d = dayAt(ms);
       const cell = document.createElement('button');
       cell.type = 'button';
       cell.tabIndex = -1;
@@ -305,32 +303,30 @@ export function calendar(button, { current, onPick }) {
     place();
     grid.focus();
     button.setAttribute('aria-expanded', 'true');
-    window.addEventListener('pointerdown', outside, true);
+    window.addEventListener('pointerdown', onPointerOutside, true);
   }
 
   function close({ refocus = true } = {}) {
     if (pop.classList.contains('hidden')) return;
     pop.classList.add('hidden');
     button.setAttribute('aria-expanded', 'false');
-    window.removeEventListener('pointerdown', outside, true);
+    window.removeEventListener('pointerdown', onPointerOutside, true);
     if (refocus) button.focus();
   }
 
-  function outside(e) {
+  function onPointerOutside(e) {
     if (pop.contains(e.target) || button.contains(e.target)) return;
     close({ refocus: false });
-    // The click that dismisses the calendar should do only that — on the map
-    // it would otherwise also place the selected photos.
+    // Anywhere else the click goes through, so a card or Save still works.
+    if (!absorbIn.some((el) => el.contains(e.target))) return;
     const swallow = (c) => { c.stopPropagation(); c.preventDefault(); };
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, true), 500);
   }
 
   function shiftMonth(dir) {
-    const d = dayStr(focusMs);
-    let y = +d.slice(0, 4);
-    let m = +d.slice(5, 7) + dir;
-    if (m < 1) { m = 12; y--; } else if (m > 12) { m = 1; y++; }
+    const d = dayAt(focusMs);
+    const [y, m] = addMonths(+d.slice(0, 4), +d.slice(5, 7), dir);
     const day = Math.min(+d.slice(8), daysIn(y, m));
     focusMs = dtToMs(`${pad(y, 4)}-${pad(m, 2)}-${pad(day, 2)}T00:00:00`);
     draw();
@@ -368,7 +364,7 @@ export function calendar(button, { current, onPick }) {
       shiftMonth(e.key === 'PageUp' ? -1 : 1);
     } else if ((e.key === 'Enter' || e.key === ' ') && e.target === grid) {
       e.preventDefault();
-      pick(dayStr(focusMs));
+      pick(dayAt(focusMs));
     } else if (e.key === 'Escape') {
       e.preventDefault();
       close();

@@ -29,11 +29,13 @@ let onReveal = () => {};
 
 export function initMap(el, opts = {}) {
   onReveal = opts.onReveal ?? onReveal;
-  // Leaflet reads a 3px wobble between press and release as a pan and drops
-  // the click, so a slightly shaky click on the map placed nothing.
-  L.Draggable.prototype.options.clickTolerance = 10;
   map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true, maxZoom: 20 })
     .setView([30, 10], 2);
+  // Leaflet reads a 3px wobble between press and release as a pan and drops
+  // the click, so a slightly shaky click on the map placed nothing. Only the
+  // map's own drag gets the wider tolerance; marker drags keep Leaflet's.
+  // `_draggable` is private, but has its own options object in Leaflet 1.9.
+  map.dragging._draggable.options.clickTolerance = 10;
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   setBasemap(opts.basemap === 'satellite' ? 'satellite' : 'map');
 
