@@ -6,15 +6,22 @@
  *                        whole selection moves rigidly, preserving its shape
  *   Interpolate route    fill in un-placed photos along the line between placed
  *                        ones, positioned by their timestamp
+ *
+ * Nearby pins merge into a cluster showing a count; clicking one zooms in, and
+ * photos at the very same spot fan out so each can be picked or dragged.
  */
 
 import {
-  state, selected, commit, emit, dtToMs, roundCoord, clickSelect, markClasses,
+  state, selected, commit, emit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
 } from './state.js';
 
 let map = null;
 /** photo id -> L.Marker */
 const markers = new Map();
+let cluster = null;
+/** Refreshing cluster icons folds a fanned-out cluster back up, which would
+ *  snatch a pin away mid-click, so hold refreshes while one is open. */
+let fannedOut = false;
 let route = null;
 let showRoute = true;
 /** Called with a photo id when its pin is double-clicked. */
@@ -29,6 +36,16 @@ export function initMap(el, opts = {}) {
     .setView([30, 10], 2);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   setBasemap(opts.basemap === 'satellite' ? 'satellite' : 'map');
+
+  cluster = L.markerClusterGroup({
+    maxClusterRadius: 36,
+    showCoverageOnHover: false,
+    spiderfyDistanceMultiplier: 1.7,
+    spiderLegPolylineOptions: { weight: 1.5, color: '#3d64c4', opacity: 0.7 },
+    iconCreateFunction: clusterIcon,
+  }).addTo(map);
+  cluster.on('spiderfied', () => { fannedOut = true; });
+  cluster.on('unspiderfied', () => { fannedOut = false; cluster.refreshClusters(); });
 
   map.on('click', (e) => {
     const sel = selected();
@@ -87,6 +104,24 @@ function icon(p) {
   });
 }
 
+/** A cluster looks like a pin with a count, and carries the same selected and
+ *  edited colours as any photo inside it, so nothing hides behind a merge. */
+function clusterIcon(c) {
+  const ids = new Set(c.getAllChildMarkers().map((m) => m.photoId));
+  const photos = state.photos.filter((p) => ids.has(p.id));
+  const cls = ['pin', 'cluster',
+    photos.some((p) => state.selection.has(p.id)) ? 'sel' : '',
+    photos.some(isEdited) ? 'edited' : ''].filter(Boolean).join(' ');
+  const face = photos.find((p) => p.thumb);
+  const img = face ? `background-image:url('${face.thumb}')` : '';
+  return L.divIcon({
+    className: '',
+    html: `<div class="${cls}" style="${img}"><b>${ids.size}</b></div>`,
+    iconSize: [38, 47],
+    iconAnchor: [19, 47],
+  });
+}
+
 /** Refresh a pin's look in place. Swapping the whole icon would replace the
  *  element between the two clicks of a double-click, so it would never fire. */
 function paint(m, p) {
@@ -109,6 +144,7 @@ let dragId = null;
 
 function makeMarker(p) {
   const m = L.marker([p.lat, p.lon], { icon: icon(p), draggable: true, riseOnHover: true });
+  m.photoId = p.id;
 
   m.on('dragstart', () => {
     dragId = p.id;
@@ -117,13 +153,24 @@ function makeMarker(p) {
     if (!state.selection.has(p.id)) clickSelect(p.id);
     commit();
     const group = selected().filter((q) => q.lat != null && q.id !== p.id);
-    drag = { origin: { lat: p.lat, lon: p.lon }, group: group.map((q) => ({ q, lat: q.lat, lon: q.lon })) };
+    for (const q of group) {
+      // Tell the cluster plugin these are being dragged too, or it regroups
+      // them on every frame and folds up the fan under the pointer.
+      const mk = markers.get(q.id);
+      if (mk) mk.__dragStart = mk.getLatLng();
+    }
+    drag = {
+      // Where the pin was drawn, which for a fanned-out pin is not its real spot.
+      from: m.getLatLng(),
+      origin: { lat: p.lat, lon: p.lon },
+      group: group.map((q) => ({ q, lat: q.lat, lon: q.lon })),
+    };
   });
 
   m.on('drag', (e) => {
     if (!drag) return;
-    const dLat = e.latlng.lat - drag.origin.lat;
-    const dLon = e.latlng.lng - drag.origin.lon;
+    const dLat = e.latlng.lat - drag.from.lat;
+    const dLon = e.latlng.lng - drag.from.lng;
     for (const g of drag.group) {
       const mk = markers.get(g.q.id);
       if (mk) mk.setLatLng([g.lat + dLat, g.lon + dLon]);
@@ -133,13 +180,16 @@ function makeMarker(p) {
 
   m.on('dragend', (e) => {
     if (!drag) return;
-    const dLat = e.target.getLatLng().lat - drag.origin.lat;
-    const dLon = e.target.getLatLng().lng - drag.origin.lon;
+    const dLat = e.target.getLatLng().lat - drag.from.lat;
+    const dLon = e.target.getLatLng().lng - drag.from.lng;
     p.lat = roundCoord(drag.origin.lat + dLat);
     p.lon = roundCoord(drag.origin.lon + dLon);
     for (const g of drag.group) {
       g.q.lat = roundCoord(g.lat + dLat);
       g.q.lon = roundCoord(g.lon + dLon);
+      // The plugin ignored their moves, so let render add them afresh.
+      const mk = markers.get(g.q.id);
+      if (mk) { delete mk.__dragStart; cluster.removeLayer(mk); markers.delete(g.q.id); }
     }
     drag = null;
     dragId = null;
@@ -196,18 +246,22 @@ export function render() {
     let m = markers.get(p.id);
     if (!m) {
       m = makeMarker(p);
-      m.addTo(map);
+      cluster.addLayer(m);
       markers.set(p.id, m);
     } else if (!drag) {
-      const cur = m.getLatLng();
+      // A fanned-out pin sits at its spot in the fan; its real place is kept
+      // aside by the cluster plugin.
+      const cur = m._preSpiderfyLatlng ?? m.getLatLng();
       if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
     }
     if (p.id !== dragId) paint(m, p);
   }
 
   for (const [id, m] of markers) {
-    if (!live.has(id)) { m.remove(); markers.delete(id); }
+    if (!live.has(id)) { cluster.removeLayer(m); markers.delete(id); }
   }
+  // Selection and edits change what a cluster should look like.
+  if (!drag && !fannedOut) cluster.refreshClusters();
   drawRoute(false);
 }
 
@@ -243,14 +297,22 @@ export function reveal(ids) {
   if (!map) return;
   const pts = state.photos.filter((p) => ids.includes(p.id) && p.lat != null);
   if (!pts.length) return;
-  if (pts.length === 1) map.setView([pts[0].lat, pts[0].lon], Math.max(map.getZoom(), 15));
-  else map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.3), { maxZoom: 17 });
-  for (const p of pts) {
-    const el = markers.get(p.id)?.getElement()?.firstElementChild;
-    if (!el) continue;
-    el.classList.remove('pulse');
-    void el.offsetWidth; // restart the animation
-    el.classList.add('pulse');
+  const pulse = () => {
+    for (const p of pts) {
+      const el = markers.get(p.id)?.getElement()?.firstElementChild;
+      if (!el) continue;
+      el.classList.remove('pulse');
+      void el.offsetWidth; // restart the animation
+      el.classList.add('pulse');
+    }
+  };
+  if (pts.length === 1) {
+    map.setView([pts[0].lat, pts[0].lon], Math.max(map.getZoom(), 15), { animate: false });
+    // Zooms further or fans out a cluster if the pin is still hidden inside one.
+    cluster.zoomToShowLayer(markers.get(pts[0].id), pulse);
+  } else {
+    map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.3), { maxZoom: 17, animate: false });
+    pulse();
   }
 }
 

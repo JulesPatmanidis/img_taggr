@@ -231,6 +231,15 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .pin.sel::after { border-top-color: var(--accent); }
 .pin.edited { border-color: var(--edited); }
 .pin.edited::after { border-top-color: var(--edited); }
+.pin.cluster b {
+  position: absolute; right: -9px; top: -7px;
+  min-width: 20px; padding: 1px 5px; border-radius: 10px; text-align: center;
+  font-size: 11px; font-weight: 700; line-height: 16px;
+  background: #fff; color: #111; box-shadow: 0 1px 4px rgba(0,0,0,.45);
+}
+.pin.cluster.sel b { background: var(--accent); color: #0b0f1a; }
+/* A stack of photos, drawn as a second card peeking out behind the first. */
+.pin.cluster { box-shadow: 4px -4px 0 -1px #fff, 4px -4px 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.55); }
 
 /* ── Timeline ─────────────────────────────────────────────────── */
 #timeView { display: flex; flex-direction: column; background: var(--bg); }
