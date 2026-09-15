@@ -24,7 +24,7 @@ export function initMap(el) {
   L.Draggable.prototype.options.clickTolerance = 10;
   map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true })
     .setView([30, 10], 2);
-  L.control.zoom({ position: 'topright' }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
 
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,

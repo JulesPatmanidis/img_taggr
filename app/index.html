@@ -14,11 +14,6 @@
       <button id="btnOpen" class="btn">Open folder</button>
       <div id="folderLabel" class="folder muted"></div>
       <div class="spacer"></div>
-      <div class="tabs" id="viewTabs">
-        <button class="tab on" data-view="map">Map</button>
-        <button class="tab" data-view="time">Timeline</button>
-      </div>
-      <div class="spacer"></div>
       <button id="btnUndo" class="btn" disabled title="Undo — Ctrl+Z">Undo</button>
       <button id="btnSave" class="btn primary" disabled>Save</button>
     </header>
@@ -35,8 +30,15 @@
 
       <section id="stage">
         <!-- ── Map view ─────────────────────────────────────────── -->
-        <div id="mapView" class="view">
+        <div id="mapView" class="pane">
           <div id="map"></div>
+          <div class="overlay tr">
+            <button class="maxBtn" data-pane="map" type="button" aria-pressed="false"
+              aria-label="Enlarge map" title="Enlarge map — M">
+              <svg class="grow" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="shrink" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
           <div class="overlay tl">
             <div class="hint">Click the map to place the selected photos.</div>
           </div>
@@ -50,8 +52,18 @@
           </div>
         </div>
 
+        <div id="splitResize" class="resizer h" role="separator" aria-orientation="horizontal"
+          aria-label="Resize map and timeline" title="Drag to resize"></div>
+
         <!-- ── Timeline view ────────────────────────────────────── -->
-        <div id="timeView" class="view hidden">
+        <div id="timeView" class="pane">
+          <div class="overlay tr">
+            <button class="maxBtn" data-pane="time" type="button" aria-pressed="false"
+              aria-label="Enlarge timeline" title="Enlarge timeline — T">
+              <svg class="grow" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5 9 7M2.5 13.5 7 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="shrink" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M9.5 6.5 14 2M6.5 9.5 2 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
           <div class="overlay br">
             <div class="hint" id="timeHint">Drag a photo along its day to set the time. With several selected, they all shift together.</div>
           </div>

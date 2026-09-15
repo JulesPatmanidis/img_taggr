@@ -288,35 +288,80 @@ $('stripResize').addEventListener('pointerdown', (ev) => {
     // once per frame, since a re-render per pointermove is far too much work.
     if (queued) return;
     queued = true;
-    requestAnimationFrame(() => {
-      queued = false;
-      MapView.invalidate();
-      if (state.view === 'time') TL.render();
-    });
+    requestAnimationFrame(() => { queued = false; resizeViews(); });
   };
   const up = () => {
     window.removeEventListener('pointermove', move);
     handle.classList.remove('on');
     try { if (width) localStorage.setItem('stripWidth', String(width)); } catch { /* ignore */ }
-    MapView.invalidate();
-    if (state.view === 'time') TL.render();
+    resizeViews();
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up, { once: true });
 });
 
-/* ── Views ─────────────────────────────────────────────────────── */
-function setView(v) {
-  state.view = v;
-  $('mapView').classList.toggle('hidden', v !== 'map');
-  $('timeView').classList.toggle('hidden', v !== 'time');
-  for (const t of $('viewTabs').children) t.classList.toggle('on', t.dataset.view === v);
-  if (v === 'map') { MapView.render(); MapView.invalidate(); }
-  else TL.render();
+/* ── Split stage ───────────────────────────────────────────────── */
+/* Map above, timeline below, so a photo's place and time are on screen
+   together. Either pane can take the whole stage for a while. */
+let maxed = null; // null | 'map' | 'time'
+const mapShown = () => maxed !== 'time';
+const timeShown = () => maxed !== 'map';
+
+function resizeViews() {
+  if (mapShown()) MapView.invalidate();
+  if (timeShown()) TL.render();
 }
-$('viewTabs').addEventListener('click', (e) => {
-  const t = e.target.closest('.tab');
-  if (t) setView(t.dataset.view);
+
+function toggleMax(pane) {
+  maxed = maxed === pane ? null : pane;
+  $('stage').dataset.max = maxed ?? '';
+  for (const b of document.querySelectorAll('.maxBtn')) {
+    const on = b.dataset.pane === maxed;
+    const name = b.dataset.pane === 'map' ? 'map' : 'timeline';
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-label', `${on ? 'Restore' : 'Enlarge'} ${name}`);
+    b.title = `${on ? 'Restore' : 'Enlarge'} ${name} — ${b.dataset.pane === 'map' ? 'M' : 'T'}`;
+  }
+  // A hidden pane skips renders, so catch the one coming back up.
+  if (mapShown()) MapView.render();
+  resizeViews();
+}
+for (const b of document.querySelectorAll('.maxBtn')) {
+  b.addEventListener('click', () => toggleMax(b.dataset.pane));
+}
+
+const MIN_SPLIT = 0.18;
+function setSplit(frac) {
+  const f = Math.max(MIN_SPLIT, Math.min(1 - MIN_SPLIT, frac));
+  document.documentElement.style.setProperty('--split', `${(f * 100).toFixed(2)}%`);
+  return f;
+}
+try {
+  const saved = Number(localStorage.getItem('split'));
+  if (saved > 0 && saved < 1) setSplit(saved);
+} catch { /* defaults are fine */ }
+
+$('splitResize').addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  const handle = ev.currentTarget;
+  const box = $('stage').getBoundingClientRect();
+  handle.classList.add('on');
+  let frac = 0;
+  let queued = false;
+  const move = (e) => {
+    frac = setSplit((e.clientY - box.top) / box.height);
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; resizeViews(); });
+  };
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    handle.classList.remove('on');
+    try { if (frac) localStorage.setItem('split', String(frac)); } catch { /* ignore */ }
+    resizeViews();
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up, { once: true });
 });
 
 /* ── Map tools ─────────────────────────────────────────────────── */
@@ -464,9 +509,12 @@ window.addEventListener('keydown', (e) => {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
     state.selection.clear(); emit(); return;
   }
-  if (e.key === 'Tab') { e.preventDefault(); setView(state.view === 'map' ? 'time' : 'map'); return; }
+  if (!mod && !e.altKey && (e.key === 'm' || e.key === 't')) {
+    toggleMax(e.key === 'm' ? 'map' : 'time');
+    return;
+  }
   // Arrow keys nudge time: a minute a press, ten seconds with Shift.
-  if (state.view === 'time' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
     const step = (e.shiftKey ? 10 : 60) * (e.key === 'ArrowLeft' ? -1 : 1);
     if (!TL.shiftSelection(step)) toast('Select photos that already have a date first', true);
@@ -478,10 +526,9 @@ function renderAll() {
   const edited = editedPhotos().length;
   syncStrip();
   renderInspector(edited);
-  // The map pane keeps its own markers, so only redraw it when it is visible;
-  // re-entering the view redraws through setView.
-  if (state.view === 'map') MapView.render();
-  else TL.render();
+  // A hidden pane is redrawn when it comes back, through toggleMax.
+  if (mapShown()) MapView.render();
+  if (timeShown()) TL.render();
 
   const sel = selected();
   let placed = 0;
@@ -511,7 +558,7 @@ TL.initTimeline({
       'Drag a photo along its day to set the time. With several selected, they all shift together.';
   },
 });
-window.addEventListener('resize', () => { if (state.view === 'time') TL.render(); });
+window.addEventListener('resize', () => { if (timeShown()) TL.render(); });
 applyCaps();
 backend.watchDrop({
   hover: (on) => $('dropZone').classList.toggle('hidden', !on),

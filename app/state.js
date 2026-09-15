@@ -13,7 +13,6 @@ export const state = {
   photos: [],
   /** Photo ids, insertion-ordered. Opaque — the backend decides their shape. */
   selection: new Set(),
-  view: 'map',
   undo: [],
   redo: [],
 };

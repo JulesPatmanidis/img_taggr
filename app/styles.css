@@ -17,6 +17,7 @@
   --radius: 7px;
   /* Set at runtime by the strip's drag handle; these are the defaults. */
   --strip: 252px;
+  --split: 58%;
   --thumb: 76px;
   --chip: 50px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -69,12 +70,6 @@ body {
 }
 .link:disabled { opacity: .38; cursor: default; }
 
-.tabs { display: flex; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: var(--radius); padding: 2px; }
-.tab {
-  font: inherit; color: var(--muted); background: none; border: none;
-  padding: 3px 16px; border-radius: 5px; cursor: pointer;
-}
-.tab.on { background: var(--accent-dim); color: var(--text); }
 
 /* ── Body split ───────────────────────────────────────────────── */
 main { flex: 1; display: flex; min-height: 0; }
@@ -123,6 +118,7 @@ main { flex: 1; display: flex; min-height: 0; }
   transition: background .12s;
 }
 .resizer:hover, .resizer.on { background: var(--accent); }
+.resizer.h { flex: 0 0 5px; cursor: row-resize; }
 .card .meta { min-width: 0; flex: 1; }
 .card .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
@@ -134,13 +130,29 @@ main { flex: 1; display: flex; min-height: 0; }
 .flag { width: 5px; height: 5px; border-radius: 50%; background: var(--line-2); }
 .flag.on { background: #4a8f5f; }
 
-#stage { flex: 1; position: relative; min-width: 0; }
-.view { position: absolute; inset: 0; }
+#stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pane { position: relative; min-height: 0; overflow: hidden; }
+#mapView { flex: 0 0 var(--split); }
+#timeView { flex: 1; }
+#stage[data-max="map"] #mapView { flex: 1; }
+#stage[data-max="map"] #timeView,
+#stage[data-max="map"] #splitResize,
+#stage[data-max="time"] #mapView,
+#stage[data-max="time"] #splitResize { display: none; }
+
+.maxBtn {
+  display: flex; padding: 6px; cursor: pointer; color: var(--text);
+  background: rgba(19,19,22,.94); border: 1px solid var(--line-2); border-radius: var(--radius);
+}
+.maxBtn:hover { border-color: #43434e; }
+.maxBtn .shrink, .maxBtn[aria-pressed="true"] .grow { display: none; }
+.maxBtn[aria-pressed="true"] .shrink { display: block; }
 
 /* ── Overlays shared by both views ────────────────────────────── */
 .overlay { position: absolute; z-index: 500; pointer-events: none; }
 .overlay > * { pointer-events: auto; }
-.overlay.tl { top: 10px; left: 10px; right: 10px; }
+.overlay.tl { top: 10px; left: 10px; right: 56px; }
+.overlay.tr { top: 10px; right: 10px; }
 .overlay.bl { bottom: 10px; left: 10px; display: flex; gap: 6px; align-items: center; }
 .overlay.br { bottom: 10px; right: 10px; max-width: 42%; text-align: right; }
 .tools .btn, .tools .chk, .shift {
