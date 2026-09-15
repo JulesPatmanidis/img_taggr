@@ -10,6 +10,7 @@ import * as TL from './timeline.js';
 import { createBackend } from './backend.js';
 import { dateTimeField, calendar } from './datetime.js';
 import * as Strip from './strip.js';
+import { initSearch } from './search.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -458,6 +459,10 @@ function renderAll() {
   let placed = 0;
   for (const p of state.photos) if (p.lat != null && ++placed >= 2) break;
 
+  MapView.setPlacing(sel.length > 0);
+  $('mapHint').textContent = !state.photos.length ? 'Search for a place, or open a folder of photos'
+    : sel.length ? `Click the map to place ${sel.length === 1 ? sel[0].name : `${sel.length} photos`}`
+      : 'Select photos, then click the map or drag them here';
   $('btnInterp').disabled = placed < 2;
   $('btnUndo').disabled = state.undo.length === 0;
   $('btnRedo').disabled = state.redo.length === 0;
@@ -498,7 +503,14 @@ Strip.initStrip({
 let savedBasemap = 'map';
 try { savedBasemap = localStorage.getItem('basemap') || 'map'; } catch { /* default */ }
 MapView.initMap($('map'), {
-  basemap: savedBasemap, onReveal: (id) => reveal([id], { time: true }) });
+  basemap: savedBasemap,
+  onClickEmpty: () => {
+    // Say why nothing happened rather than silently ignoring the click.
+    const hint = $('mapHint');
+    hint.classList.remove('nudge');
+    void hint.offsetWidth; // restart the animation
+    hint.classList.add('nudge');
+  }, onReveal: (id) => reveal([id], { time: true }) });
 TL.initTimeline({
   root: $('tl'),
   axis: $('tlAxis'),
@@ -511,6 +523,13 @@ TL.initTimeline({
 });
 window.addEventListener('resize', () => { if (timeShown()) TL.render(); });
 showBasemap(savedBasemap === 'satellite' ? 'satellite' : 'map');
+initSearch({
+  input: $('searchInput'),
+  list: $('searchResults'),
+  center: MapView.center,
+  onPick: MapView.showPlace,
+  onClear: MapView.clearPlace,
+});
 applyCaps();
 backend.watchDrop({
   hover: (on) => $('dropZone').classList.toggle('hidden', !on),

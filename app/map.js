@@ -49,7 +49,7 @@ export function initMap(el, opts = {}) {
 
   map.on('click', (e) => {
     const sel = selected();
-    if (!sel.length) return;
+    if (!sel.length) { opts.onClickEmpty?.(); return; }
     commit();
     for (const p of sel) {
       p.lat = roundCoord(e.latlng.lat);
@@ -91,6 +91,41 @@ export function setBasemap(name) {
 }
 
 export function setShowRoute(v) { showRoute = v; render(); }
+
+/** Crosshair while a click would place photos, so a click never surprises. */
+export function setPlacing(on) {
+  map?.getContainer().classList.toggle('placing', on);
+}
+
+export function center() {
+  const c = map.getCenter();
+  return { lat: c.lat, lon: c.lng, zoom: map.getZoom() };
+}
+
+/* ── Search results ────────────────────────────────────────────── */
+let place = null;
+
+/** Fly to a searched place and mark it. The mark ignores the pointer, so
+ *  clicking on it places photos exactly there like anywhere else. */
+export function showPlace({ lat, lon, extent, label }) {
+  clearPlace();
+  if (extent) {
+    const [w, n, e, s] = extent;
+    map.flyToBounds([[s, w], [n, e]], { maxZoom: 17, duration: 0.8 });
+  } else {
+    map.flyTo([lat, lon], 17, { duration: 0.8 });
+  }
+  place = L.marker([lat, lon], {
+    interactive: false, keyboard: false,
+    icon: L.divIcon({ className: '', html: '<div class="placeMark"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
+  }).bindTooltip(label, { permanent: true, direction: 'top', offset: [0, -10], className: 'placeLabel' })
+    .addTo(map);
+}
+
+export function clearPlace() {
+  place?.remove();
+  place = null;
+}
 export function invalidate() { if (map) map.invalidateSize(); }
 
 function icon(p) {
