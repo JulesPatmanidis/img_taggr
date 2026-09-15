@@ -79,24 +79,22 @@ fn scan_folder(path: String, recursive: bool) -> Result<ScanResult, String> {
     })
 }
 
+/// Decoding is slow, so keep it off the thread that serves IPC.
+async fn render_image(path: String, orientation: u32, size: thumb::Size) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || thumb::make(Path::new(&path), orientation, size))
+        .await
+        .ok()
+        .flatten()
+}
+
 #[tauri::command]
 async fn load_thumb(path: String, orientation: u32) -> Option<String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        thumb::make(Path::new(&path), orientation, thumb::THUMB_EDGE)
-    })
-    .await
-    .ok()
-    .flatten()
+    render_image(path, orientation, thumb::Size::Thumb).await
 }
 
 #[tauri::command]
 async fn load_preview(path: String, orientation: u32) -> Option<String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        thumb::make(Path::new(&path), orientation, thumb::PREVIEW_EDGE)
-    })
-    .await
-    .ok()
-    .flatten()
+    render_image(path, orientation, thumb::Size::Preview).await
 }
 
 #[derive(Serialize)]

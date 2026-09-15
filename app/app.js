@@ -1,4 +1,4 @@
-/* img-taggr — wiring: folder loading, filmstrip, inspector, save. */
+/* img-taggr — wiring: folder loading, inspector, previews, keyboard, save. */
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, commit, undo, redo,
@@ -12,6 +12,8 @@ import { dateTimeField, calendar } from './datetime.js';
 import * as Strip from './strip.js';
 import { initSearch } from './search.js';
 import { hoverPreview, initLightbox, openLightbox } from './preview.js';
+import * as Stage from './stage.js';
+import { stored, store, replay } from './dom.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -283,78 +285,12 @@ $('btnRevert').addEventListener('click', () => {
 /* Views never follow the selection on their own — that makes the map jump
    while you work. Double-click, or the inspector buttons, ask for it. */
 function reveal(ids, { map = false, time = false }) {
-  // A maximised pane hides the other one, which is exactly what was asked for.
-  if (map && maxed === 'time') toggleMax('time');
-  if (time && maxed === 'map') toggleMax('map');
+  Stage.show({ map, time });
   if (map) MapView.reveal(ids);
   if (time) TL.reveal(ids);
 }
 $('btnShowMap').addEventListener('click', () => reveal([...state.selection], { map: true }));
 $('btnShowTime').addEventListener('click', () => reveal([...state.selection], { time: true }));
-
-/* ── Split stage ───────────────────────────────────────────────── */
-/* Map above, timeline below, so a photo's place and time are on screen
-   together. Either pane can take the whole stage for a while. */
-let maxed = null; // null | 'map' | 'time'
-const mapShown = () => maxed !== 'time';
-const timeShown = () => maxed !== 'map';
-
-function resizeViews() {
-  if (mapShown()) MapView.invalidate();
-  if (timeShown()) TL.render();
-}
-
-function toggleMax(pane) {
-  maxed = maxed === pane ? null : pane;
-  $('stage').dataset.max = maxed ?? '';
-  for (const b of document.querySelectorAll('.maxBtn')) {
-    const on = b.dataset.pane === maxed;
-    const name = b.dataset.pane === 'map' ? 'map' : 'timeline';
-    b.setAttribute('aria-pressed', String(on));
-    b.setAttribute('aria-label', `${on ? 'Restore' : 'Enlarge'} ${name}`);
-    b.title = `${on ? 'Restore' : 'Enlarge'} ${name} — ${b.dataset.pane === 'map' ? 'M' : 'T'}`;
-  }
-  // A hidden pane skips renders, so catch the one coming back up.
-  if (mapShown()) MapView.render();
-  resizeViews();
-}
-for (const b of document.querySelectorAll('.maxBtn')) {
-  b.addEventListener('click', () => toggleMax(b.dataset.pane));
-}
-
-const MIN_SPLIT = 0.18;
-function setSplit(frac) {
-  const f = Math.max(MIN_SPLIT, Math.min(1 - MIN_SPLIT, frac));
-  document.documentElement.style.setProperty('--split', `${(f * 100).toFixed(2)}%`);
-  return f;
-}
-try {
-  const saved = Number(localStorage.getItem('split'));
-  if (saved > 0 && saved < 1) setSplit(saved);
-} catch { /* defaults are fine */ }
-
-$('splitResize').addEventListener('pointerdown', (ev) => {
-  ev.preventDefault();
-  const handle = ev.currentTarget;
-  const box = $('stage').getBoundingClientRect();
-  handle.classList.add('on');
-  let frac = 0;
-  let queued = false;
-  const move = (e) => {
-    frac = setSplit((e.clientY - box.top) / box.height);
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(() => { queued = false; resizeViews(); });
-  };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    handle.classList.remove('on');
-    try { if (frac) localStorage.setItem('split', String(frac)); } catch { /* ignore */ }
-    resizeViews();
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up, { once: true });
-});
 
 /* ── Map tools ─────────────────────────────────────────────────── */
 $('btnInterp').addEventListener('click', () => {
@@ -373,9 +309,8 @@ function showBasemap(name) {
 $('basemapSeg').addEventListener('click', (e) => {
   const b = e.target.closest('[data-basemap]');
   if (!b) return;
-  MapView.setBasemap(b.dataset.basemap);
-  showBasemap(b.dataset.basemap);
-  try { localStorage.setItem('basemap', b.dataset.basemap); } catch { /* ignore */ }
+  showBasemap(MapView.setBasemap(b.dataset.basemap));
+  store('basemap', b.dataset.basemap);
 });
 $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.checked));
 
@@ -506,10 +441,8 @@ window.addEventListener('keydown', (e) => {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
     state.selection.clear(); emit(); return;
   }
-  if (!mod && !e.altKey && (e.key === 'm' || e.key === 't')) {
-    toggleMax(e.key === 'm' ? 'map' : 'time');
-    return;
-  }
+  const pane = !mod && !e.altKey && Stage.paneForKey(e.key);
+  if (pane) { Stage.toggleMax(pane); return; }
   // Arrow keys nudge time: a minute a press, ten seconds with Shift.
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();
@@ -526,8 +459,8 @@ function renderAll() {
   Strip.sync();
   renderInspector(edited);
   // A hidden pane is redrawn when it comes back, through toggleMax.
-  if (mapShown()) MapView.render();
-  if (timeShown()) TL.render();
+  if (Stage.mapShown()) MapView.render();
+  if (Stage.timeShown()) TL.render();
 
   const sel = selected();
   let placed = 0;
@@ -551,6 +484,8 @@ async function onOpenClick() {
 }
 $('btnOpen').addEventListener('click', onOpenClick);
 $('btnWelcomeOpen').addEventListener('click', onOpenClick);
+$('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
+$('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
 
 /* ── Shortcut list ─────────────────────────────────────────────── */
 function showKeys(on) {
@@ -564,8 +499,6 @@ $('keys').addEventListener('keydown', (e) => {
   e.stopPropagation();
   if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); showKeys(false); }
 });
-$('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
-$('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
 
 /* ── Inspector panel ───────────────────────────────────────────── */
 function setInspectorOpen(open) {
@@ -574,46 +507,37 @@ function setInspectorOpen(open) {
   b.setAttribute('aria-expanded', String(open));
   b.setAttribute('aria-label', open ? 'Hide inspector' : 'Show inspector');
   b.title = open ? 'Hide inspector' : 'Show inspector';
-  try { localStorage.setItem('inspector', open ? 'open' : 'closed'); } catch { /* ignore */ }
-  resizeViews();
+  store('inspector', open ? 'open' : 'closed');
+  Stage.resizeViews();
 }
 $('btnIns').addEventListener('click', () => {
   setInspectorOpen($('inspector').classList.contains('collapsed'));
 });
-try {
-  if (localStorage.getItem('inspector') === 'closed') setInspectorOpen(false);
-} catch { /* open by default */ }
+if (stored('inspector') === 'closed') setInspectorOpen(false);
 
 /* ── Boot ──────────────────────────────────────────────────────── */
+Stage.initStage();
 Strip.initStrip({
   toast,
-  onResize: resizeViews,
+  onResize: Stage.resizeViews,
   onReveal: (ids) => reveal(ids, { map: true, time: true }),
   dropTargets: [MapView.dropTarget, TL.dropTarget],
 });
-let savedBasemap = 'map';
-try { savedBasemap = localStorage.getItem('basemap') || 'map'; } catch { /* default */ }
 MapView.initMap($('map'), {
-  basemap: savedBasemap,
-  onClickEmpty: () => {
-    // Say why nothing happened rather than silently ignoring the click.
-    const hint = $('mapHint');
-    hint.classList.remove('nudge');
-    void hint.offsetWidth; // restart the animation
-    hint.classList.add('nudge');
-  }, onReveal: (id) => reveal([id], { time: true }) });
+  basemap: stored('basemap'),
+  // Say why nothing happened rather than silently ignoring the click.
+  onClickEmpty: () => replay($('mapHint'), 'nudge'),
+  onReveal: (id) => reveal([id], { time: true }),
+});
 TL.initTimeline({
   root: $('tl'),
   axis: $('tlAxis'),
   track: $('tlTrack'),
-  hint: (msg) => {
-    $('timeHint').textContent = msg
-      || 'Drag a photo to set its time · Ctrl+scroll to zoom · drag empty space to select';
-  },
+  hint: (msg) => { $('timeHint').textContent = msg; },
   onReveal: (id) => reveal([id], { map: true }),
 });
-window.addEventListener('resize', () => { if (timeShown()) TL.render(); });
-showBasemap(savedBasemap === 'satellite' ? 'satellite' : 'map');
+window.addEventListener('resize', () => { if (Stage.timeShown()) TL.render(); });
+showBasemap(MapView.basemapName());
 initSearch({
   input: $('searchInput'),
   list: $('searchResults'),

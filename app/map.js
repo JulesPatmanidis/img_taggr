@@ -14,6 +14,7 @@
 import {
   state, selected, commit, emit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
 } from './state.js';
+import { replay } from './dom.js';
 
 let map = null;
 /** photo id -> L.Marker */
@@ -37,13 +38,14 @@ export function initMap(el, opts = {}) {
   // `_draggable` is private, but has its own options object in Leaflet 1.9.
   map.dragging._draggable.options.clickTolerance = 10;
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  setBasemap(opts.basemap === 'satellite' ? 'satellite' : 'map');
+  setBasemap(opts.basemap);
 
   cluster = L.markerClusterGroup({
     maxClusterRadius: 36,
     showCoverageOnHover: false,
     spiderfyDistanceMultiplier: 1.7,
-    spiderLegPolylineOptions: { weight: 1.5, color: '#3d64c4', opacity: 0.7 },
+    // Colours come from the theme in styles.css, through the class.
+    spiderLegPolylineOptions: { weight: 1.5, opacity: 0.7, className: 'spiderLeg' },
     iconCreateFunction: clusterIcon,
   }).addTo(map);
   cluster.on('spiderfied', () => { fannedOut = true; });
@@ -52,15 +54,21 @@ export function initMap(el, opts = {}) {
   map.on('click', (e) => {
     const sel = selected();
     if (!sel.length) { opts.onClickEmpty?.(); return; }
-    commit();
-    for (const p of sel) {
-      p.lat = roundCoord(e.latlng.lat);
-      p.lon = roundCoord(((e.latlng.lng + 180) % 360 + 360) % 360 - 180);
-    }
-    emit();
+    placeAt(sel, e.latlng);
   });
 
   return map;
+}
+
+/** Move `photos` to `latlng` as one undo step. Leaflet's longitude runs past
+ *  ±180 once the world has been panned round, so wrap it back. */
+function placeAt(photos, latlng) {
+  commit();
+  for (const p of photos) {
+    p.lat = roundCoord(latlng.lat);
+    p.lon = roundCoord(((latlng.lng + 180) % 360 + 360) % 360 - 180);
+  }
+  emit();
 }
 
 /* Neither needs a key or an account, so the page works for anyone who opens
@@ -84,13 +92,19 @@ const BASEMAPS = {
   ],
 };
 let basemap = [];
+let basemapKey = 'map';
 
+/** Switch basemaps; anything unknown, such as a stale saved choice, falls back
+ *  to the plain map. Returns the basemap now shown. */
 export function setBasemap(name) {
+  basemapKey = name in BASEMAPS ? name : 'map';
   for (const layer of basemap) layer.remove();
-  basemap = BASEMAPS[name]();
+  basemap = BASEMAPS[basemapKey]();
   for (const layer of basemap) layer.addTo(map).bringToBack();
-  map.getContainer().dataset.basemap = name;
+  map.getContainer().dataset.basemap = basemapKey;
+  return basemapKey;
 }
+export const basemapName = () => basemapKey;
 
 export function setShowRoute(v) { showRoute = v; render(); }
 
@@ -136,16 +150,18 @@ export function clearPlace() {
 }
 export function invalidate() { if (map) map.invalidateSize(); }
 
-function icon(p) {
-  const cls = markClasses('pin', p);
-  const img = p.thumb ? `background-image:url('${p.thumb}')` : '';
+/** A pin: a thumbnail in a teardrop, anchored at its tip. */
+function pinIcon(cls, thumb, inner = '') {
+  const img = thumb ? `background-image:url('${thumb}')` : '';
   return L.divIcon({
     className: '',
-    html: `<div class="${cls}" style="${img}"></div>`,
+    html: `<div class="${cls}" style="${img}">${inner}</div>`,
     iconSize: [38, 47],
     iconAnchor: [19, 47],
   });
 }
+
+const icon = (p) => pinIcon(markClasses('pin', p), p.thumb);
 
 /** A cluster looks like a pin with a count, and carries the same selected and
  *  edited colours as any photo inside it, so nothing hides behind a merge. */
@@ -155,14 +171,7 @@ function clusterIcon(c) {
   const cls = ['pin', 'cluster',
     photos.some((p) => state.selection.has(p.id)) ? 'sel' : '',
     photos.some(isEdited) ? 'edited' : ''].filter(Boolean).join(' ');
-  const face = photos.find((p) => p.thumb);
-  const img = face ? `background-image:url('${face.thumb}')` : '';
-  return L.divIcon({
-    className: '',
-    html: `<div class="${cls}" style="${img}"><b>${ids.size}</b></div>`,
-    iconSize: [38, 47],
-    iconAnchor: [19, 47],
-  });
+  return pinIcon(cls, photos.find((p) => p.thumb)?.thumb, `<b>${ids.size}</b>`);
 }
 
 /** Refresh a pin's look in place. Swapping the whole icon would replace the
@@ -273,7 +282,7 @@ function drawRoute(live) {
   if (route) {
     route.setLatLngs(pts);
   } else {
-    route = L.polyline(pts, { color: '#7aa2f7', weight: 1.5, opacity: 0.5, dashArray: '4 4' })
+    route = L.polyline(pts, { weight: 1.5, opacity: 0.5, dashArray: '4 4', className: 'route' })
       .addTo(map);
     route.bringToBack();
   }
@@ -319,14 +328,8 @@ export const dropTarget = {
   drop(x, y, ids) {
     this.leave();
     const r = map.getContainer().getBoundingClientRect();
-    const ll = map.containerPointToLatLng([x - r.left, y - r.top]);
-    commit();
-    for (const p of state.photos) {
-      if (!ids.includes(p.id)) continue;
-      p.lat = roundCoord(ll.lat);
-      p.lon = roundCoord(((ll.lng + 180) % 360 + 360) % 360 - 180);
-    }
-    emit();
+    placeAt(state.photos.filter((p) => ids.includes(p.id)),
+      map.containerPointToLatLng([x - r.left, y - r.top]));
   },
 };
 
@@ -343,10 +346,7 @@ export function reveal(ids) {
   const pulse = () => {
     for (const p of pts) {
       const el = markers.get(p.id)?.getElement()?.firstElementChild;
-      if (!el) continue;
-      el.classList.remove('pulse');
-      void el.offsetWidth; // restart the animation
-      el.classList.add('pulse');
+      if (el) replay(el, 'pulse');
     }
   };
   if (pts.length === 1) {

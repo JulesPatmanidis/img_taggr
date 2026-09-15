@@ -4,11 +4,16 @@
  * what still needs doing. Filters narrow it to what is missing a date or a
  * location. Cards drag straight onto the map or the timeline; the views are
  * only places to drop them.
+ *
+ * It is also the keyboard's way to photos: one card at a time takes Tab focus,
+ * ↑ ↓ Home End move and select (Shift extends, Ctrl only moves), and Enter or
+ * Ctrl+Space selects or toggles the focused card.
  */
 
 import {
   state, emit, isEdited, clickSelect, commit, normDt, photoCount,
 } from './state.js';
+import { stored, store, dragHandle } from './dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,6 +29,8 @@ const FILTERS = {
 };
 let filter = 'all';
 let lastClicked = null;
+/** The card that takes Tab focus, so returning to the list lands where you were. */
+let cursor = null;
 let opts = {};
 
 const visible = () => state.photos.filter(FILTERS[filter]);
@@ -36,6 +43,7 @@ export function initStrip(options) {
     if (card) opts.onReveal([card.dataset.id]);
   });
   $('stripList').addEventListener('pointerdown', onPointerDown);
+  $('stripList').addEventListener('keydown', onKey);
   $('btnSelectAll').addEventListener('click', selectAll);
   $('stripFilters').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-filter]');
@@ -52,6 +60,8 @@ export function build() {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.id = p.id;
+    card.setAttribute('role', 'option');
+    card.tabIndex = -1;
     card.innerHTML =
       '<div class="th"></div><div class="meta">' +
       '<div class="nm"></div><div class="sub"></div>' +
@@ -64,12 +74,16 @@ export function build() {
   }
   $('stripList').replaceChildren(frag);
   lastClicked = null;
+  cursor = null;
   if (!state.photos.some(FILTERS[filter])) setFilter('all');
 }
 
 export function sync() {
   const list = $('stripList');
   const show = FILTERS[filter];
+  const shownIds = visible().map((p) => p.id);
+  const tabStop = shownIds.includes(cursor) ? cursor
+    : shownIds.find((id) => state.selection.has(id)) ?? shownIds[0];
   let i = 0;
   for (const p of state.photos) {
     const el = p._el;
@@ -79,6 +93,8 @@ export function sync() {
     i++;
     el.classList.toggle('hidden', !show(p));
     el.classList.toggle('sel', state.selection.has(p.id));
+    el.setAttribute('aria-selected', String(state.selection.has(p.id)));
+    el.tabIndex = p.id === tabStop ? 0 : -1;
     el.classList.toggle('edited', isEdited(p));
     if (p.thumb && el._thumb !== p.thumb) {
       el.querySelector('.th').style.backgroundImage = `url('${p.thumb}')`;
@@ -101,7 +117,7 @@ export function sync() {
     b.querySelector('b').textContent = counts[b.dataset.filter];
     b.disabled = !n;
   }
-  const shown = visible().length;
+  const shown = shownIds.length;
   $('stripCount').textContent = !n ? 'No photos'
     : state.selection.size ? `${state.selection.size} selected`
       : filter === 'all' ? photoCount(n) : `${shown} of ${n}`;
@@ -127,18 +143,37 @@ function setFilter(f) {
 /** Set right after a drag so the click that ends it does not reselect. */
 let swallowClick = false;
 
+function select(id, { toggle = false, extend = false } = {}) {
+  cursor = id;
+  clickSelect(id, { toggle, extend, anchor: lastClicked, order: visible().map((p) => p.id) });
+  if (!extend) lastClicked = id;
+}
+
 function onClick(ev) {
   if (swallowClick) { swallowClick = false; return; }
   const card = ev.target.closest('.card');
+  if (card) select(card.dataset.id, { toggle: ev.ctrlKey || ev.metaKey, extend: ev.shiftKey });
+}
+
+function onKey(ev) {
+  const card = ev.target.closest('.card');
   if (!card) return;
-  const id = card.dataset.id;
-  clickSelect(id, {
-    toggle: ev.ctrlKey || ev.metaKey,
-    extend: ev.shiftKey,
-    anchor: lastClicked,
-    order: visible().map((p) => p.id),
-  });
-  if (!ev.shiftKey) lastClicked = id;
+  const mod = ev.ctrlKey || ev.metaKey;
+  const order = visible().map((p) => p.id);
+  const at = order.indexOf(card.dataset.id);
+  const to = { ArrowUp: at - 1, ArrowDown: at + 1, PageUp: at - 10, PageDown: at + 10,
+    Home: 0, End: order.length - 1 }[ev.key];
+  if (to !== undefined) {
+    ev.preventDefault();
+    const id = order[Math.max(0, Math.min(order.length - 1, to))];
+    if (mod) cursor = id; else select(id, { extend: ev.shiftKey });
+    sync();
+    state.photos.find((p) => p.id === id)?._el?.focus();
+  } else if (ev.key === 'Enter' || (ev.key === ' ' && mod)) {
+    // Plain Space stays the preview shortcut, as everywhere else.
+    ev.preventDefault();
+    select(card.dataset.id, { toggle: mod, extend: ev.shiftKey });
+  }
 }
 
 /** Select everything the current filter shows, or clear if that is already it. */
@@ -236,33 +271,14 @@ function setStripWidth(px) {
 }
 
 function initResize() {
-  try {
-    const saved = Number(localStorage.getItem('stripWidth'));
-    if (Number.isFinite(saved) && saved > 0) setStripWidth(saved);
-  } catch { /* private mode or blocked storage: the defaults are fine */ }
+  const saved = Number(stored('stripWidth'));
+  if (Number.isFinite(saved) && saved > 0) setStripWidth(saved);
 
-  $('stripResize').addEventListener('pointerdown', (ev) => {
-    ev.preventDefault();
-    const handle = ev.currentTarget;
-    handle.classList.add('on');
-    let width = 0;
-    let queued = false;
-
-    const move = (e) => {
-      width = setStripWidth(e.clientX);
-      // Both views size themselves from the pane, so keep them in step — but
-      // only once per frame, since a re-render per pointermove is too much work.
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(() => { queued = false; opts.onResize(); });
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      handle.classList.remove('on');
-      try { if (width) localStorage.setItem('stripWidth', String(width)); } catch { /* ignore */ }
-      opts.onResize();
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up, { once: true });
+  let width = 0;
+  dragHandle($('stripResize'), {
+    move: (e) => { width = setStripWidth(e.clientX); },
+    // Both views size themselves from the pane, so keep them in step.
+    frame: () => opts.onResize(),
+    end: () => { if (width) store('stripWidth', width); },
   });
 }

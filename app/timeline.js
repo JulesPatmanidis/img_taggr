@@ -19,6 +19,7 @@ import {
   state, selected, commit, emit, clickSelect, markClasses, photoCount,
   dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
 } from './state.js';
+import { replay } from './dom.js';
 
 const DAY_MS = 86400000;
 /** Zoom limits: about 1 min across 1000px, up to about 10 years. */
@@ -62,7 +63,7 @@ export function initTimeline(refs) {
   els.track.addEventListener('pointerdown', onTrackDown);
   els.axis.addEventListener('pointerdown', onAxisDown);
   els.root.addEventListener('wheel', onWheel, { passive: false });
-  els.hint('');
+  els.hint(HINT);
 }
 
 /* ── Framing ───────────────────────────────────────────────────── */
@@ -105,9 +106,7 @@ export function reveal(ids) {
   for (const id of ids) {
     const el = chips.get(id);
     if (!el) continue;
-    el.classList.remove('pulse');
-    void el.offsetWidth; // restart the animation
-    el.classList.add('pulse');
+    replay(el, 'pulse');
   }
 }
 
@@ -141,6 +140,8 @@ export function render() {
   // Rows: a photo that would overlap the one before it steps one row down, and
   // a clear gap starts again at the top. Earliest is always on top, so a
   // burst reads as a staircase and nothing jumps rows for no visible reason.
+  // A burst deeper than the track piles up on the bottom row rather than
+  // wrapping back over the photos at the top.
   let prevX = -Infinity;
   let step = 0;
   for (const { p, ms } of dated) {
@@ -149,7 +150,7 @@ export function render() {
     prevX = x;
     const el = chipEl(p);
     el.style.left = `${x}px`;
-    el.style.top = `${6 + (step % rows) * rowH}px`;
+    el.style.top = `${6 + Math.min(step, rows - 1) * rowH}px`;
     const t = document.createElement('div');
     t.className = 'chipTime';
     t.textContent = p.datetime.slice(11, 16);
@@ -432,7 +433,7 @@ function onPointerUp() {
   drag = null;
   if (!d) return;
   hideDrop();
-  els.hint('');
+  els.hint(HINT);
 
   if (d.kind === 'box') {
     if (d.moved) {

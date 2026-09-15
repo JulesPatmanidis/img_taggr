@@ -10,13 +10,36 @@ use image::imageops::FilterType;
 use image::DynamicImage;
 use std::path::Path;
 
-/// Long edge of a generated thumbnail. Comfortably above what any view asks
-/// for on a high-DPI display; raising it costs memory on big folders.
-pub const THUMB_EDGE: u32 = 384;
+/// What an image is being rendered for, which decides its size and quality.
+#[derive(Clone, Copy)]
+pub enum Size {
+    /// Cards, pins and chips.
+    Thumb,
+    /// The full-screen lightbox.
+    Preview,
+}
 
-/// Long edge of the full-screen preview: sharp on a large display, and still
-/// quick to hand to the webview as a data URL.
-pub const PREVIEW_EDGE: u32 = 2048;
+impl Size {
+    /// Long edge in pixels.
+    fn edge(self) -> u32 {
+        match self {
+            // Comfortably above what any view asks for on a high-DPI display;
+            // raising it costs memory on big folders.
+            Size::Thumb => 384,
+            // Sharp on a large display, and still quick to hand to the webview
+            // as a data URL.
+            Size::Preview => 2048,
+        }
+    }
+
+    fn jpeg_quality(self) -> u8 {
+        match self {
+            Size::Thumb => 78,
+            // Artefacts that vanish in a thumbnail show up at full-screen size.
+            Size::Preview => 85,
+        }
+    }
+}
 
 /// Undo the camera's EXIF orientation so the thumbnail is upright.
 fn apply_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
@@ -32,10 +55,10 @@ fn apply_orientation(img: DynamicImage, orientation: u32) -> DynamicImage {
     }
 }
 
-fn encode_oriented(img: DynamicImage, orientation: u32, edge: u32) -> Option<String> {
+fn encode_oriented(img: DynamicImage, orientation: u32, size: Size) -> Option<String> {
+    let edge = size.edge();
     let img = apply_orientation(img.thumbnail(edge, edge), orientation);
-    // Artefacts that vanish in a thumbnail show up at full-screen size.
-    let quality = if edge > THUMB_EDGE { 85 } else { 78 };
+    let quality = size.jpeg_quality();
     let mut buf = std::io::Cursor::new(Vec::new());
     img.into_rgb8()
         .write_with_encoder(image::codecs::jpeg::JpegEncoder::new_with_quality(
@@ -46,10 +69,9 @@ fn encode_oriented(img: DynamicImage, orientation: u32, edge: u32) -> Option<Str
     Some(format!("data:image/jpeg;base64,{b64}"))
 }
 
-/// Build a JPEG data URL for `path` no larger than `edge` on its long side, or
-/// `None` if the format cannot be decoded here (the UI falls back to a
-/// filename-only tile).
-pub fn make(path: &Path, orientation: u32, edge: u32) -> Option<String> {
+/// Build a JPEG data URL for `path` at `size`, or `None` if the format cannot
+/// be decoded here (the UI falls back to a filename-only tile).
+pub fn make(path: &Path, orientation: u32, size: Size) -> Option<String> {
     // Covers JPEG/PNG/TIFF/WebP. HEIC fails here and returns None.
     let reader = image::ImageReader::open(path)
         .ok()?
@@ -58,10 +80,9 @@ pub fn make(path: &Path, orientation: u32, edge: u32) -> Option<String> {
     let img = reader.decode().ok()?;
     // A cheap pre-shrink before the slow, sharp resampler; only worth it when
     // the target is far below the camera's resolution.
-    let img = if edge <= THUMB_EDGE {
-        img.resize(edge * 2, edge * 2, FilterType::Triangle)
-    } else {
-        img
+    let img = match size {
+        Size::Thumb => img.resize(size.edge() * 2, size.edge() * 2, FilterType::Triangle),
+        Size::Preview => img,
     };
-    encode_oriented(img, orientation, edge)
+    encode_oriented(img, orientation, size)
 }

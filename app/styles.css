@@ -150,6 +150,8 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 .card:hover { background: var(--panel-2); }
 .card.sel { background: var(--accent-dim); border-color: var(--accent); }
+/* The list scrolls, so an outside ring would be clipped at its edges. */
+.card:focus-visible { outline-offset: -2px; }
 .card .th {
   position: relative;
   width: var(--thumb); height: var(--thumb); flex: 0 0 var(--thumb);
@@ -297,6 +299,9 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .leaflet-control-attribution { background: var(--float) !important; color: var(--muted) !important; font-size: 10px !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
 .leaflet-bar a { background: var(--panel-2) !important; color: var(--text) !important; border-color: var(--line-2) !important; }
+
+/* Map lines follow the theme; the SVG stroke attribute loses to CSS. */
+path.route, path.spiderLeg { stroke: var(--accent); }
 
 .pin {
   position: relative;

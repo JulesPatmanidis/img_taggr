@@ -6,7 +6,8 @@ by side: a **map** and a **timeline**.
 Runs two ways from one codebase — as a website with no server, or as a desktop
 app. Photos are never uploaded in either case. The network is used only for map
 tiles (OpenStreetMap, and Esri for satellite imagery) and for place search
-(Photon, which receives the search text and nothing else).
+(Photon, which receives the search text, the interface language and where the map
+is looking, so nearby places rank first — never anything about your photos).
 
 ## Why
 
@@ -183,6 +184,7 @@ cargo install wasm-bindgen-cli --version 0.2.128
 | double-click | show a photo in the other view |
 | `M` / `T` | enlarge the map / the timeline |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
+| `↑` `↓` in the photo list | select next (`Shift` extends, `Ctrl` only moves, `Ctrl+Space` toggles) |
 | `Ctrl+A` | select every photo the list shows |
 | `Ctrl+S` | save |
 | `←` `→` | shift selection 1 min (`Shift` = 10 s) |
@@ -202,7 +204,9 @@ app/                    frontend — plain ES modules, no build step
   timeline.js           continuous track, rows, group time shift
   datetime.js           keyboard-driven date-time field and calendar
   preview.js            hover previews and the lightbox
-  app.js                wiring: loading, inspector, split stage, save flow
+  stage.js              map/timeline split: enlarge a pane, drag the divider
+  dom.js                small DOM helpers: saved settings, drag handles
+  app.js                wiring: loading, inspector, previews, keyboard, save
   vendor/               Leaflet and Leaflet.markercluster
   wasm/                 generated — built by ./build-wasm.sh
 engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)

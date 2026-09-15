@@ -34,7 +34,7 @@
       "icons/icon.png"
     ],
     "category": "Photography",
-    "shortDescription": "Offline photo time & location metadata editor",
-    "longDescription": "Pick photos from local storage and edit their capture time, date and GPS location interactively on a map and on a day timeline. Photos never leave the computer; only map tiles and place searches use the network."
+    "shortDescription": "Local photo time & location metadata editor",
+    "longDescription": "Pick photos from local storage and edit their capture time, date and GPS location interactively on a map and on a timeline. Photos never leave the computer; only map tiles and place searches use the network."
   }
 }
