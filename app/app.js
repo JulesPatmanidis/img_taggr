@@ -28,6 +28,45 @@ function toast(msg, isErr = false) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), isErr ? 7000 : 3800);
 }
 
+/* ── Confirmation ──────────────────────────────────────────────── */
+/** An in-page yes/no, so nothing blocks the page the way confirm() does.
+ *  Cancel has the focus: the destructive answer must be chosen on purpose. */
+function confirmDialog({ title, body, yes }) {
+  return new Promise((resolve) => {
+    const wrap = $('confirm');
+    $('confirmTitle').textContent = title;
+    $('confirmBody').textContent = body;
+    $('confirmYes').textContent = yes;
+    wrap.classList.remove('hidden');
+    const back = document.activeElement;
+    $('confirmNo').focus();
+    const done = (answer) => {
+      wrap.classList.add('hidden');
+      wrap.removeEventListener('keydown', onKey);
+      $('confirmYes').onclick = $('confirmNo').onclick = null;
+      if (back instanceof HTMLElement) back.focus();
+      resolve(answer);
+    };
+    const onKey = (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') done(false);
+    };
+    wrap.addEventListener('keydown', onKey);
+    $('confirmYes').onclick = () => done(true);
+    $('confirmNo').onclick = () => done(false);
+  });
+}
+
+async function confirmDiscard(action) {
+  const n = editedPhotos().length;
+  if (!n) return true;
+  return confirmDialog({
+    title: `Discard ${n} unsaved change${n === 1 ? '' : 's'}?`,
+    body: `${action} throws away edits that have not been saved.`,
+    yes: 'Discard changes',
+  });
+}
+
 /* ── Loading a folder ──────────────────────────────────────────── */
 /** `pending` is whatever the backend is producing — a picker or a drop — so
  *  both routes share one loading path. */
@@ -38,6 +77,7 @@ async function openFolder(pending) {
     $('folderLabel').textContent = 'Reading…';
     const res = await pending;
     if (!res) { $('folderLabel').textContent = prevLabel; return; }
+    res.activate?.();
     state.folder = res.label;
     state.selection.clear();
     resetHistory();
@@ -491,8 +531,10 @@ function renderAll() {
 }
 setOnChange(renderAll);
 
-// Called synchronously so the picker still sees the click as a user gesture.
-$('btnOpen').addEventListener('click', () => openFolder(backend.pickSource()));
+$('btnOpen').addEventListener('click', async () => {
+  // The picker needs a user gesture; the confirm's own click provides a fresh one.
+  if (await confirmDiscard('Opening another folder')) openFolder(backend.pickSource());
+});
 $('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
 $('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
 
@@ -553,7 +595,13 @@ initSearch({
 applyCaps();
 backend.watchDrop({
   hover: (on) => $('dropZone').classList.toggle('hidden', !on),
-  drop: openFolder,
+  drop: async (pending) => {
+    if (await confirmDiscard('Opening these photos')) openFolder(pending);
+  },
+});
+backend.guardClose({
+  dirty: () => editedPhotos().length > 0,
+  confirm: () => confirmDiscard('Closing img-taggr'),
 });
 renderAll();
 

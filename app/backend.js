@@ -14,8 +14,11 @@
  *
  * Interface:
  *   id, caps, envWarning()
- *   pickSource()            -> {label, photos} | null
+ *   pickSource()            -> {label, photos, activate?} | null
+ *                              the app calls activate() once it takes the
+ *                              photos, so a declined source changes nothing
  *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>)
+ *   guardClose({dirty, confirm}) ask before closing with unsaved edits
  *   loadThumb(photo)        -> data URL | null
  *   loadPreview(photo)      -> URL of a full-size image | null
  *   suggestOutput(label)    -> string
@@ -81,6 +84,13 @@ function tauriBackend() {
       return dialog.open({ directory: true, multiple: false, title: 'Output folder' });
     },
 
+    guardClose({ dirty, confirm }) {
+      // The handler is awaited; unless it prevents the close, Tauri destroys the window.
+      window.__TAURI__.window.getCurrentWindow().onCloseRequested(async (e) => {
+        if (dirty() && !(await confirm())) e.preventDefault();
+      });
+    },
+
     save(items, { mode, outDir }) {
       return invoke('apply_edits', { items, mode, outDir: mode === 'copy' ? outDir : null });
     },
@@ -133,24 +143,31 @@ async function webBackend() {
     };
   }
 
-  async function ingest(fileList, label) {
-    files.clear();
-    for (const url of previews.values()) URL.revokeObjectURL(url);
-    previews.clear();
+  /** Read a set of files. Nothing about the open session changes until the
+   *  app calls activate(), so a source it declines leaves the old one intact. */
+  async function ingest(fileList, label, handle = null) {
     const accepted = [...fileList].filter((f) => wasm.supported(f.name));
+    const found = new Map();
     const photos = [];
     let seq = 0;
     for (const f of accepted) {
       // webkitRelativePath keeps folder structure visible and ids unique; a
       // plain multi-file pick has none, so fall back to a counter.
       const id = f.webkitRelativePath || `${f.name}#${seq++}`;
-      files.set(id, f);
+      found.set(id, f);
       photos.push(await describe(f, id));
     }
     return {
       label,
       photos,
       unreadable: fileList.length - accepted.length,
+      activate() {
+        files.clear();
+        for (const [id, f] of found) files.set(id, f);
+        for (const url of previews.values()) URL.revokeObjectURL(url);
+        previews.clear();
+        outHandle = handle;
+      },
     };
   }
 
@@ -179,15 +196,12 @@ async function webBackend() {
     // write back beside it. Loose files open as they are.
     const h = await handle;
     if (h?.kind === 'directory') {
-      outHandle = h;
-      return ingest(await filesIn(h), h.name);
+      return ingest(await filesIn(h), h.name, h);
     }
     if (entry?.isDirectory) {
-      outHandle = null;
       return ingest(await filesInEntry(entry), entry.name);
     }
     if (!loose.length) return null;
-    outHandle = null;
     return ingest(loose, 'dropped photos');
   }
 
@@ -216,8 +230,7 @@ async function webBackend() {
         } catch {
           return null; // user dismissed
         }
-        outHandle = dir;
-        return ingest(await filesIn(dir), dir.name);
+        return ingest(await filesIn(dir), dir.name, dir);
       }
 
       // Fallback: a hidden directory input. Works everywhere, no write access.
@@ -232,7 +245,6 @@ async function webBackend() {
         input.click();
       });
       if (!chosen || !chosen.length) return null;
-      outHandle = null;
       const root = chosen[0].webkitRelativePath?.split('/')[0] || 'photos';
       return ingest(chosen, root);
     },
@@ -302,6 +314,13 @@ async function webBackend() {
 
     suggestOutput(label) {
       return `${label}_tagged`;
+    },
+
+    guardClose({ dirty }) {
+      // Browsers only allow their own generic prompt here.
+      window.addEventListener('beforeunload', (e) => {
+        if (dirty()) e.preventDefault();
+      });
     },
 
     async pickOutput() {
