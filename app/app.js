@@ -8,6 +8,7 @@ import {
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
 import { createBackend } from './backend.js';
+import { dateTimeField, calendar } from './datetime.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -163,6 +164,8 @@ function common(sel, fn) {
 }
 
 function setField(el, val, fmt = (v) => v) {
+  // A re-render must never wipe what someone is typing.
+  if (document.activeElement === el) return;
   el.classList.toggle('multi', val === MULTI);
   if (val === MULTI) {
     el.value = '';
@@ -176,7 +179,7 @@ function setField(el, val, fmt = (v) => v) {
 function renderInspector(edited = editedPhotos().length) {
   const sel = selected();
   const has = sel.length > 0;
-  for (const id of ['fDate', 'fTime', 'fTz', 'fLat', 'fLon']) $(id).disabled = !has;
+  for (const id of ['fDt', 'btnCal', 'fTz', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
 
   $('selLabel').textContent = !has
@@ -187,11 +190,17 @@ function renderInspector(edited = editedPhotos().length) {
   $('editLabel').textContent = `${edited} unsaved`;
 
   if (!has) {
-    for (const id of ['fDate', 'fTime', 'fTz', 'fLat', 'fLon']) setField($(id), null);
+    dtField.set(null);
+    for (const id of ['fTz', 'fLat', 'fLon']) setField($(id), null);
     return;
   }
-  setField($('fDate'), common(sel, (p) => dayOf(p.datetime)));
-  setField($('fTime'), common(sel, (p) => timeOf(p.datetime)));
+  // Editing a mixed selection starts from its first photo; only the halves
+  // actually changed are applied, so each photo keeps the rest of its own.
+  const first = sel.find((p) => p.datetime);
+  dtField.set(first?.datetime ?? null, {
+    mixed: common(sel, (p) => p.datetime) === MULTI,
+    fallback: `${seedDay(sel[0])}T12:00:00`,
+  });
   setField($('fTz'), common(sel, (p) => p.offset ?? null));
   setField($('fLat'), common(sel, (p) => p.lat ?? null), (v) => v.toFixed(6));
   setField($('fLon'), common(sel, (p) => p.lon ?? null), (v) => v.toFixed(6));
@@ -210,19 +219,20 @@ function applyField(fn, filter = () => true) {
   return sel.length;
 }
 
-$('fDate').addEventListener('change', (e) => {
-  const d = e.target.value;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
-  applyField((p) => { p.datetime = normDt(`${d}T${timeOf(p.datetime) ?? '12:00:00'}`); });
+const dtField = dateTimeField($('fDt'), {
+  onCommit: ({ date, time }) => applyField((p) => {
+    // A photo with no date at all needs both halves before either means anything.
+    const d = date ?? dayOf(p.datetime) ?? seedDay(p);
+    const t = time ?? timeOf(p.datetime) ?? '12:00:00';
+    p.datetime = normDt(`${d}T${t}`);
+  }),
 });
-
-$('fTime').addEventListener('change', (e) => {
-  let t = e.target.value;
-  if (!t) return;
-  if (t.length === 5) t += ':00';
-  if (!/^\d{2}:\d{2}:\d{2}$/.test(t)) return;
-  // A photo with no date at all needs one before a time means anything.
-  applyField((p) => { p.datetime = normDt(`${dayOf(p.datetime) ?? seedDay(p)}T${t}`); });
+calendar($('btnCal'), {
+  current: () => {
+    const days = selected().map((p) => dayOf(p.datetime)).filter(Boolean);
+    return days.length ? days[0] : null;
+  },
+  onPick: (day) => dtField.setDate(day),
 });
 
 $('fTz').addEventListener('change', (e) => {

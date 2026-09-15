@@ -262,7 +262,7 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .fields { display: flex; align-items: center; gap: 10px; flex: 1; }
 .fld { display: flex; flex-direction: column; gap: 2px; }
-.fld > span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.fld > span, .fld > label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 .fld input {
   font: inherit; font-family: var(--mono); font-size: 12px;
   color: var(--text); background: var(--panel-2);
@@ -272,6 +272,43 @@ main { flex: 1; display: flex; min-height: 0; }
 .fld input:focus { outline: none; border-color: var(--accent); }
 .fld input:disabled { opacity: .4; }
 .fld input.multi { color: var(--muted); font-style: italic; }
+.fld input::placeholder { color: var(--muted); }
+
+/* Date-time field with its calendar button tucked inside the right edge. */
+.dt { position: relative; display: flex; }
+.fld .dt input { width: 172px; padding-right: 26px; }
+.calBtn {
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  display: flex; padding: 3px; border: none; border-radius: 4px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.calBtn:hover:not(:disabled), .calBtn[aria-expanded="true"] { color: var(--text); background: var(--line-2); }
+.calBtn:disabled { opacity: .4; cursor: default; }
+
+.cal {
+  position: fixed; z-index: 2600; width: 232px; padding: 10px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0,0,0,.55);
+}
+.calHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.calTitle { font-size: 12px; font-weight: 600; }
+.calNav {
+  font: inherit; font-size: 15px; line-height: 1; color: var(--text);
+  background: none; border: none; border-radius: 5px; padding: 3px 8px; cursor: pointer;
+}
+.calNav:hover { background: var(--panel-2); }
+.calWeek, .calGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.calWeek span { font-size: 10px; color: var(--muted); text-align: center; padding: 2px 0; }
+.calGrid { outline: none; }
+.calDay {
+  font: inherit; font-size: 12px; font-family: var(--mono); color: var(--text);
+  background: none; border: 1px solid transparent; border-radius: 5px;
+  padding: 4px 0; cursor: pointer;
+}
+.calDay:hover { background: var(--panel-2); }
+.calDay.out { color: var(--muted); opacity: .6; }
+.calDay.on { background: var(--accent-dim); }
+.calGrid:focus .calDay.focus { border-color: var(--accent); }
 .sep { width: 1px; height: 26px; background: var(--line); }
 
 /* ── Save sheet ───────────────────────────────────────────────── */
