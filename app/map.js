@@ -186,6 +186,33 @@ export function render() {
   drawRoute(false);
 }
 
+/** Photos dragged in from the filmstrip land where they are dropped. */
+export const dropTarget = {
+  hover(x, y) {
+    const over = !!map && inside(x, y);
+    map?.getContainer().classList.toggle('dropping', over);
+    return over;
+  },
+  leave() { map?.getContainer().classList.remove('dropping'); },
+  drop(x, y, ids) {
+    this.leave();
+    const r = map.getContainer().getBoundingClientRect();
+    const ll = map.containerPointToLatLng([x - r.left, y - r.top]);
+    commit();
+    for (const p of state.photos) {
+      if (!ids.includes(p.id)) continue;
+      p.lat = roundCoord(ll.lat);
+      p.lon = roundCoord(((ll.lng + 180) % 360 + 360) % 360 - 180);
+    }
+    emit();
+  },
+};
+
+function inside(x, y) {
+  const r = map.getContainer().getBoundingClientRect();
+  return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
 /** Bring these photos into view and pulse their pins so the eye finds them. */
 export function reveal(ids) {
   if (!map) return;

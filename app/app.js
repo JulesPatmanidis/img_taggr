@@ -2,13 +2,14 @@
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, commit, undo, redo,
-  normDt, roundCoord, clickSelect, dayOf, timeOf, seedDay, photoCount, fmtDur,
-  EDITABLE, rebase, revertToBaseline, resetHistory,
+  normDt, roundCoord, dayOf, timeOf, seedDay, photoCount, fmtDur,
+  EDITABLE, rebase, revertToBaseline, resetHistory, sortPhotos,
 } from './state.js';
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
 import { createBackend } from './backend.js';
 import { dateTimeField, calendar } from './datetime.js';
+import * as Strip from './strip.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -49,7 +50,8 @@ async function openFolder(pending) {
 
     $('folderLabel').textContent = res.label.length > 44 ? `…${res.label.slice(-43)}` : res.label;
     $('folderLabel').title = res.label;
-    buildStrip();
+    sortPhotos();
+    Strip.build();
     emit();
     MapView.fit();
     toast(photoCount(state.photos.length)
@@ -68,7 +70,7 @@ async function loadThumbs() {
   const queue = state.photos.slice();
   const token = state.folder;
   let dirty = false;
-  const flush = () => { if (dirty) { dirty = false; syncStrip(); MapView.render(); TL.render(); } };
+  const flush = () => { if (dirty) { dirty = false; renderAll(); } };
   const ticker = setInterval(flush, 220);
 
   const worker = async () => {
@@ -85,79 +87,6 @@ async function loadThumbs() {
   clearInterval(ticker);
   flush();
 }
-
-/* ── Filmstrip ─────────────────────────────────────────────────── */
-let lastClicked = null;
-
-function buildStrip() {
-  const list = $('stripList');
-  const frag = document.createDocumentFragment();
-  for (const p of state.photos) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.dataset.id = p.id;
-    card.innerHTML =
-      '<div class="th"></div><div class="meta">' +
-      '<div class="nm"></div><div class="sub"></div>' +
-      '<div class="flags"><i class="flag" title="has date"></i><i class="flag" title="has location"></i></div>' +
-      '</div>';
-    card.querySelector('.nm').textContent = p.name;
-    card.querySelector('.th').dataset.ext = p.ext || '?';
-    p._el = card;
-    frag.appendChild(card);
-  }
-  list.replaceChildren(frag);
-}
-
-function syncStrip() {
-  for (const p of state.photos) {
-    const el = p._el;
-    if (!el) continue;
-    el.classList.toggle('sel', state.selection.has(p.id));
-    el.classList.toggle('edited', isEdited(p));
-    if (p.thumb && el._thumb !== p.thumb) {
-      el.querySelector('.th').style.backgroundImage = `url('${p.thumb}')`;
-      el._thumb = p.thumb;
-    }
-    el.querySelector('.sub').textContent = p.datetime
-      ? p.datetime.slice(0, 16).replace('T', ' ')
-      : 'no date';
-    const flags = el.querySelectorAll('.flag');
-    flags[0].classList.toggle('on', !!p.datetime);
-    flags[1].classList.toggle('on', p.lat != null);
-  }
-  const n = state.photos.length;
-  $('stripCount').textContent = n
-    ? `${state.selection.size ? `${state.selection.size} of ${n}` : n} photo${n === 1 ? '' : 's'}`
-    : 'No photos';
-  $('btnSelectAll').disabled = !n;
-}
-
-$('stripList').addEventListener('dblclick', (ev) => {
-  const card = ev.target.closest('.card');
-  if (card) reveal([card.dataset.id], { map: true, time: true });
-});
-
-$('stripList').addEventListener('click', (ev) => {
-  const card = ev.target.closest('.card');
-  if (!card) return;
-  const id = card.dataset.id;
-  const idx = state.photos.findIndex((p) => p.id === id);
-
-  clickSelect(id, {
-    toggle: ev.ctrlKey || ev.metaKey,
-    extend: ev.shiftKey,
-    anchor: lastClicked,
-  });
-  if (!ev.shiftKey) lastClicked = idx;
-});
-
-$('btnSelectAll').addEventListener('click', () => {
-  const all = state.selection.size === state.photos.length;
-  state.selection.clear();
-  if (!all) for (const p of state.photos) state.selection.add(p.id);
-  emit();
-});
 
 /* ── Inspector ─────────────────────────────────────────────────── */
 /** Shared value across a selection, or the MULTI sentinel. */
@@ -295,50 +224,6 @@ $('btnRevert').addEventListener('click', () => {
   if (n) toast(`Reverted ${photoCount(n)}`);
 });
 
-/* ── Filmstrip sizing ──────────────────────────────────────────── */
-/* One drag handle instead of a size menu: "too small" depends on the screen,
-   and the thumbnails scale with the panel so widening it actually shows more. */
-const MIN_STRIP = 180;
-const MAX_STRIP = 460;
-
-function setStripWidth(px) {
-  const w = Math.round(Math.max(MIN_STRIP, Math.min(MAX_STRIP, px)));
-  const root = document.documentElement;
-  root.style.setProperty('--strip', `${w}px`);
-  root.style.setProperty('--thumb', `${Math.round(Math.max(56, Math.min(132, w * 0.31)))}px`);
-  return w;
-}
-
-try {
-  const saved = Number(localStorage.getItem('stripWidth'));
-  if (Number.isFinite(saved) && saved > 0) setStripWidth(saved);
-} catch { /* private mode or blocked storage: the defaults are fine */ }
-
-$('stripResize').addEventListener('pointerdown', (ev) => {
-  ev.preventDefault();
-  const handle = ev.currentTarget;
-  handle.classList.add('on');
-  let width = 0;
-  let queued = false;
-
-  const move = (e) => {
-    width = setStripWidth(e.clientX);
-    // Both views size themselves from the pane, so keep them in step — but only
-    // once per frame, since a re-render per pointermove is far too much work.
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(() => { queued = false; resizeViews(); });
-  };
-  const up = () => {
-    window.removeEventListener('pointermove', move);
-    handle.classList.remove('on');
-    try { if (width) localStorage.setItem('stripWidth', String(width)); } catch { /* ignore */ }
-    resizeViews();
-  };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', up, { once: true });
-});
-
 /* ── Reveal ────────────────────────────────────────────────────── */
 /* Views never follow the selection on their own — that makes the map jump
    while you work. Double-click, or the inspector buttons, ask for it. */
@@ -428,21 +313,6 @@ $('btnClearGps').addEventListener('click', () => {
 $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.checked));
 
 /* ── Timeline tools ────────────────────────────────────────────── */
-$('btnSeedDates').addEventListener('click', () => {
-  // Dragging hundreds of undated photos one by one is not a workflow. File
-  // mtime is a rough but honest starting point that can then be shifted as a
-  // group; it is offered explicitly rather than applied behind the user's back.
-  const undated = state.photos.filter((p) => !p.datetime && p.file_modified);
-  if (!undated.length) {
-    toast('These photos have no file date to fall back on', true);
-    return;
-  }
-  commit();
-  for (const p of undated) p.datetime = normDt(p.file_modified);
-  emit();
-  toast(`Dated ${photoCount(undated.length)} from file timestamps — now drag to correct them`);
-});
-
 $('zoomBar').addEventListener('click', (e) => {
   const b = e.target.closest('[data-zoom]');
   if (!b) return;
@@ -548,7 +418,7 @@ window.addEventListener('keydown', (e) => {
     if (did) emit(); else toast(e.shiftKey ? 'Nothing to redo' : 'Nothing to undo');
     return;
   }
-  if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); $('btnSelectAll').click(); return; }
+  if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); Strip.selectAll(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); openSave(); return; }
   if (e.key === 'Escape') {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
@@ -569,7 +439,8 @@ window.addEventListener('keydown', (e) => {
 /* ── Render loop ───────────────────────────────────────────────── */
 function renderAll() {
   const edited = editedPhotos().length;
-  syncStrip();
+  sortPhotos();
+  Strip.sync();
   renderInspector(edited);
   // A hidden pane is redrawn when it comes back, through toggleMax.
   if (mapShown()) MapView.render();
@@ -610,6 +481,12 @@ try {
 } catch { /* open by default */ }
 
 /* ── Boot ──────────────────────────────────────────────────────── */
+Strip.initStrip({
+  toast,
+  onResize: resizeViews,
+  onReveal: (ids) => reveal(ids, { map: true, time: true }),
+  dropTargets: [MapView.dropTarget],
+});
 MapView.initMap($('map'), { onReveal: (id) => reveal([id], { time: true }) });
 TL.initTimeline({
   days: $('days'),

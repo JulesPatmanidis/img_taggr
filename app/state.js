@@ -92,21 +92,30 @@ export function selected() {
 /**
  * The selection gesture, shared by the filmstrip, map and timeline so all three
  * behave identically: ctrl/cmd toggles, shift extends from the last click, a
- * plain click replaces. `anchor` is the index a shift-click ranges from; pass
- * it only from views that have a stable order to range over.
+ * plain click replaces. Extending needs `anchor` (the id last clicked) and
+ * `order` (the ids in the order they are shown), so only views with a stable,
+ * visible order offer it.
  */
-export function clickSelect(id, { toggle = false, extend = false, anchor = null } = {}) {
+export function clickSelect(id, { toggle = false, extend = false, anchor = null, order = null } = {}) {
+  const from = extend && order ? order.indexOf(anchor) : -1;
+  const to = from === -1 ? -1 : order.indexOf(id);
   if (toggle) {
     state.selection.has(id) ? state.selection.delete(id) : state.selection.add(id);
-  } else if (extend && anchor !== null) {
-    const to = state.photos.findIndex((p) => p.id === id);
-    const [a, b] = [anchor, to].sort((x, y) => x - y);
-    for (let i = a; i <= b; i++) state.selection.add(state.photos[i].id);
+  } else if (to !== -1) {
+    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) state.selection.add(order[i]);
   } else {
     state.selection.clear();
     state.selection.add(id);
   }
   emit();
+}
+
+/** Capture order: undated first, as the to-do list, then by time, then name. */
+export function sortPhotos() {
+  state.photos.sort((a, b) =>
+    (!!a.datetime - !!b.datetime)
+    || (a.datetime && b.datetime ? dtToMs(a.datetime) - dtToMs(b.datetime) : 0)
+    || a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
 /** The fields a user can edit. Everything that compares, snapshots, reverts or

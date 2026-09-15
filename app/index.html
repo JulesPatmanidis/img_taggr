@@ -25,7 +25,16 @@
           <span id="stripCount" class="muted">No photos</span>
           <button id="btnSelectAll" class="link">Select all</button>
         </div>
+        <div id="stripFilters" class="filters" role="radiogroup" aria-label="Show photos">
+          <button class="filter on" data-filter="all" role="radio" aria-checked="true" disabled>All <b></b></button>
+          <button class="filter" data-filter="undated" role="radio" aria-checked="false" disabled>No date <b></b></button>
+          <button class="filter" data-filter="unplaced" role="radio" aria-checked="false" disabled>No location <b></b></button>
+        </div>
+        <div id="seedRow" class="seedRow hidden">
+          <button id="btnSeedDates" class="link" title="Set capture time from each file's modification date">Date undated photos from their files</button>
+        </div>
         <div id="stripList" class="stripList"></div>
+        <div id="stripEmpty" class="stripEmpty muted hidden">Nothing left here.</div>
       </aside>
       <div id="stripResize" class="resizer" title="Drag to resize"></div>
 
@@ -70,7 +79,6 @@
           <div class="trayWrap" id="trayWrap">
             <div class="trayLabel muted">
               No date <span id="trayCount"></span>
-              <button id="btnSeedDates" class="link" title="Set capture time from each file's modification date">Use file dates</button>
             </div>
             <div class="tray" id="tray"></div>
           </div>
