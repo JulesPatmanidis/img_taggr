@@ -17,6 +17,7 @@
  *   pickSource()            -> {label, photos} | null
  *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>)
  *   loadThumb(photo)        -> data URL | null
+ *   loadPreview(photo)      -> URL of a full-size image | null
  *   suggestOutput(label)    -> string
  *   save(items, opts)       -> [{path, ok, error}]
  */
@@ -68,6 +69,10 @@ function tauriBackend() {
       return invoke('load_thumb', { path: photo.path, orientation: photo.orientation ?? 1 });
     },
 
+    loadPreview(photo) {
+      return invoke('load_preview', { path: photo.path, orientation: photo.orientation ?? 1 });
+    },
+
     suggestOutput(label) {
       return invoke('suggest_out_dir', { folder: label });
     },
@@ -98,6 +103,8 @@ async function webBackend() {
   const files = new Map();
   /** Directory handle when the browser supports writing back in place. */
   let outHandle = null;
+  /** photo id -> object URL for the lightbox. */
+  const previews = new Map();
   const canWriteFiles = typeof window.showDirectoryPicker === 'function';
 
   async function describe(file, id) {
@@ -128,6 +135,8 @@ async function webBackend() {
 
   async function ingest(fileList, label) {
     files.clear();
+    for (const url of previews.values()) URL.revokeObjectURL(url);
+    previews.clear();
     const accepted = [...fileList].filter((f) => wasm.supported(f.name));
     const photos = [];
     let seq = 0;
@@ -256,6 +265,15 @@ async function webBackend() {
           loose: items.map((i) => i.getAsFile()).filter(Boolean),
         }));
       });
+    },
+
+    async loadPreview(photo) {
+      const file = files.get(photo.path);
+      if (!file) return null;
+      // The browser decodes and orients it; an object URL only references the
+      // File, so keeping one per photo costs nothing.
+      if (!previews.has(photo.path)) previews.set(photo.path, URL.createObjectURL(file));
+      return previews.get(photo.path);
     },
 
     async loadThumb(photo) {

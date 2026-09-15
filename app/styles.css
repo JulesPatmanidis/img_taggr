@@ -368,7 +368,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .insBody { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
 .insHead { display: flex; gap: 10px; align-items: center; padding-right: 22px; min-height: 48px; }
 .insThumb {
-  position: relative; flex: 0 0 48px; height: 48px; border-radius: 6px;
+  position: relative; flex: 0 0 48px; height: 48px; border-radius: 6px; padding: 0; cursor: zoom-in;
   background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--line);
 }
 .insThumb[data-ext]:not([data-ext=""])::after {
@@ -502,3 +502,45 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   100% { box-shadow: 0 0 0 16px rgba(122,162,247,0); }
 }
 .pin.pulse, .chip.pulse { animation: pulse .7s ease-out 2; }
+
+/* ── Hover preview ────────────────────────────────────────────── */
+.peek {
+  position: fixed; left: 0; top: 0; z-index: 2800; pointer-events: none;
+  width: 280px; padding: 6px; border-radius: 9px;
+  background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 12px 34px rgba(0,0,0,.55);
+}
+.peekImg {
+  position: relative; height: 210px; border-radius: 5px;
+  background: #202027 center/contain no-repeat;
+}
+.peekImg:not([data-ext=""])::after {
+  content: attr(data-ext) " — no preview"; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted);
+}
+.peekCap { display: flex; flex-direction: column; gap: 1px; padding: 6px 3px 1px; min-width: 0; }
+.peekCap b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.peekCap span { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+
+/* ── Lightbox ─────────────────────────────────────────────────── */
+.lightbox {
+  position: fixed; inset: 0; z-index: 3500; outline: none;
+  display: flex; align-items: center; justify-content: center; gap: 12px; padding: 24px 16px;
+  background: rgba(8,8,10,.94);
+}
+.lbFig { margin: 0; flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.lbStage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.lbStage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+.lbStage img.loading { filter: blur(6px); }
+.lbMsg { color: var(--muted); font-size: 13px; }
+.lightbox figcaption { display: flex; align-items: baseline; gap: 12px; justify-content: center; flex-wrap: wrap; color: #e9e9ec; }
+.lightbox figcaption b { font-size: 13px; }
+.lightbox figcaption span { font-size: 12px; font-family: var(--mono); color: #a0a0aa; }
+.lightbox figcaption em { font-style: normal; font-size: 11px; color: #85858f; }
+.lbNav, .lbClose {
+  font: inherit; color: #e9e9ec; cursor: pointer; line-height: 1;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 50%;
+}
+.lbNav { flex: 0 0 44px; height: 44px; font-size: 26px; }
+.lbNav:hover:not(:disabled), .lbClose:hover { background: rgba(255,255,255,.16); }
+.lbNav:disabled { opacity: .25; cursor: default; }
+.lbClose { position: absolute; top: 14px; right: 16px; width: 36px; height: 36px; font-size: 22px; z-index: 1; }

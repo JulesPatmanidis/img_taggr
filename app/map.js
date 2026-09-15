@@ -102,6 +102,12 @@ export function center() {
   return { lat: c.lat, lon: c.lng, zoom: map.getZoom() };
 }
 
+/** The photo a pin element belongs to, or null for clusters and search marks. */
+export function photoIdOf(el) {
+  for (const [id, m] of markers) if (m.getElement() === el) return id;
+  return null;
+}
+
 /* ── Search results ────────────────────────────────────────────── */
 let place = null;
 

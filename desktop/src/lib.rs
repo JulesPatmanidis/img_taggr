@@ -81,10 +81,22 @@ fn scan_folder(path: String, recursive: bool) -> Result<ScanResult, String> {
 
 #[tauri::command]
 async fn load_thumb(path: String, orientation: u32) -> Option<String> {
-    tauri::async_runtime::spawn_blocking(move || thumb::make(Path::new(&path), orientation))
-        .await
-        .ok()
-        .flatten()
+    tauri::async_runtime::spawn_blocking(move || {
+        thumb::make(Path::new(&path), orientation, thumb::THUMB_EDGE)
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+#[tauri::command]
+async fn load_preview(path: String, orientation: u32) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        thumb::make(Path::new(&path), orientation, thumb::PREVIEW_EDGE)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 #[derive(Serialize)]
@@ -174,6 +186,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_folder,
             load_thumb,
+            load_preview,
             apply_edits,
             suggest_out_dir
         ])

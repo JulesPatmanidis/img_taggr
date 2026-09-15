@@ -11,6 +11,7 @@ import { createBackend } from './backend.js';
 import { dateTimeField, calendar } from './datetime.js';
 import * as Strip from './strip.js';
 import { initSearch } from './search.js';
+import { hoverPreview, initLightbox, openLightbox } from './preview.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -416,11 +417,30 @@ function applyCaps() {
     ? 'Output folder' : 'Download as';
 }
 
+/* ── Previews ────────────────────────────────────────────────── */
+/** Full-size view of the selection's first photo, stepping through them all. */
+function preview() {
+  if (!state.photos.length) return;
+  const ids = state.photos.map((p) => p.id);
+  openLightbox(ids, state.photos.find((p) => state.selection.has(p.id))?.id ?? ids[0]);
+}
+initLightbox({ loadPreview: (p) => backend.loadPreview(p) });
+hoverPreview($('stripList'), '.card .th', (el) => el.closest('.card').dataset.id);
+hoverPreview($('tlTrack'), '.chip', (el) => el.dataset.id);
+hoverPreview($('map'), '.leaflet-marker-icon', MapView.photoIdOf);
+$('insThumb').addEventListener('click', preview);
+
 /* ── Keyboard ──────────────────────────────────────────────────── */
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.matches('input, textarea')) return;
   const mod = e.ctrlKey || e.metaKey;
 
+  // Space on a focused button presses it; anywhere else it opens the preview.
+  if (e.key === ' ' && !mod && !(e.target instanceof Element && e.target.closest('button, a, [role="radio"]'))) {
+    e.preventDefault();
+    preview();
+    return;
+  }
   if (mod && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     const did = e.shiftKey ? redo() : undo();
