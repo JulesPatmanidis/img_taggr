@@ -475,6 +475,7 @@ window.addEventListener('keydown', (e) => {
   if (e.target instanceof Element && e.target.matches('input, textarea')) return;
   const mod = e.ctrlKey || e.metaKey;
 
+  if (e.key === '?') { e.preventDefault(); showKeys(true); return; }
   // Space on a focused button presses it; anywhere else it opens the preview.
   if (e.key === ' ' && !mod && !(e.target instanceof Element && e.target.closest('button, a, [role="radio"]'))) {
     e.preventDefault();
@@ -508,6 +509,7 @@ window.addEventListener('keydown', (e) => {
 /* ── Render loop ───────────────────────────────────────────────── */
 function renderAll() {
   const edited = editedPhotos().length;
+  $('welcome').classList.toggle('hidden', state.photos.length > 0);
   sortPhotos();
   Strip.sync();
   renderInspector(edited);
@@ -531,9 +533,24 @@ function renderAll() {
 }
 setOnChange(renderAll);
 
-$('btnOpen').addEventListener('click', async () => {
+async function onOpenClick() {
   // The picker needs a user gesture; the confirm's own click provides a fresh one.
   if (await confirmDiscard('Opening another folder')) openFolder(backend.pickSource());
+}
+$('btnOpen').addEventListener('click', onOpenClick);
+$('btnWelcomeOpen').addEventListener('click', onOpenClick);
+
+/* ── Shortcut list ─────────────────────────────────────────────── */
+function showKeys(on) {
+  $('keys').classList.toggle('hidden', !on);
+  if (on) $('keys').querySelector('.modal').focus(); else $('btnKeys').focus();
+}
+$('btnKeys').addEventListener('click', () => showKeys(true));
+$('keysClose').addEventListener('click', () => showKeys(false));
+$('keys').addEventListener('click', (e) => { if (e.target === $('keys')) showKeys(false); });
+$('keys').addEventListener('keydown', (e) => {
+  e.stopPropagation();
+  if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); showKeys(false); }
 });
 $('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
 $('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
