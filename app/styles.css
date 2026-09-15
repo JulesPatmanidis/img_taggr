@@ -185,7 +185,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .overlay.tr { top: 10px; right: 10px; }
 .overlay.bl { bottom: 10px; left: 10px; display: flex; gap: 6px; align-items: center; }
 .overlay.br { bottom: 10px; right: 10px; max-width: 42%; text-align: right; }
-.tools .btn, .tools .chk, .shift {
+.tools .btn, .tools .chk {
   background: rgba(19,19,22,.94); backdrop-filter: blur(6px);
   border: 1px solid var(--line-2); border-radius: var(--radius);
 }
@@ -195,8 +195,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   border: 1px solid var(--line); border-radius: var(--radius);
 }
 .chk { display: flex; align-items: center; gap: 5px; padding: 4px 9px; font-size: 12px; cursor: pointer; }
-.shift { display: flex; align-items: center; gap: 5px; padding: 4px 8px; }
-.shift .btn { background: var(--panel-2); }
 
 /* ── Map ──────────────────────────────────────────────────────── */
 #map { position: absolute; inset: 0; background: #101015; }
@@ -226,33 +224,38 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 
 /* ── Timeline ─────────────────────────────────────────────────── */
 #timeView { display: flex; flex-direction: column; background: var(--bg); }
-.trayWrap { flex: 0 0 auto; border-bottom: 1px solid var(--line); padding: 7px 12px; background: var(--panel); }
-.trayLabel { font-size: 11px; margin-bottom: 5px; display: flex; align-items: center; gap: 8px; }
-.tray { display: flex; gap: 6px; overflow-x: auto; min-height: 54px; align-items: center; }
-.days { flex: 1; overflow: auto; padding: 14px 12px 64px; }
-
-.day { margin-bottom: 20px; }
-.shift .btn.on { background: var(--accent-dim); border-color: var(--accent); }
-/* Pinned to the left edge: when the track is zoomed wider than the pane, a
-   header that scrolls away leaves you with no idea which day you are editing. */
-.dayHead {
-  display: flex; align-items: baseline; gap: 9px; margin-bottom: 5px;
-  position: sticky; left: 0; width: max-content;
-  padding-right: 10px; background: var(--bg);
+.tl { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.tlAxis {
+  position: relative; flex: 0 0 36px; overflow: hidden; cursor: grab;
+  background: var(--panel); border-bottom: 1px solid var(--line);
 }
-.dayHead b { font-size: 12px; font-weight: 600; }
-.dayHead span { font-size: 11px; color: var(--muted); font-family: var(--mono); }
-.track {
-  position: relative; height: 74px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+.tlAxis.panning { cursor: grabbing; }
+.tlDay {
+  position: absolute; top: 3px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: none;
 }
-.track.drop { border-color: var(--accent); background: #16161d; }
-.tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
-.tick.major { background: var(--line-2); }
-.tickLab { position: absolute; bottom: 3px; font-size: 9px; color: var(--muted); font-family: var(--mono); transform: translateX(-50%); }
+.tlTime {
+  position: absolute; bottom: 3px; transform: translateX(-50%); pointer-events: none;
+  font-size: 10px; font-family: var(--mono); color: var(--muted); white-space: nowrap;
+}
+.tlTrack { position: relative; flex: 1; overflow: hidden; }
+.tlTrack.dropping { box-shadow: inset 0 0 0 2px var(--accent); }
+.tlGrid { position: absolute; inset: 0; pointer-events: none; }
+.tlBand { position: absolute; top: 0; bottom: 0; }
+.tlBand.odd { background: rgba(255,255,255,.022); }
+.tlTick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.tlTick.day { background: var(--line-2); width: 2px; }
+.tlBox {
+  position: absolute; z-index: 10; pointer-events: none;
+  border: 1px solid var(--accent); background: rgba(122,162,247,.12);
+}
+.tlEmpty {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 0 24px 30px; text-align: center; color: var(--muted); font-size: 12px; pointer-events: none;
+}
 
 .chip {
-  position: absolute; top: 9px;
+  position: absolute; top: 6px;
   width: var(--chip); height: var(--chip); transform: translateX(-50%);
   border-radius: 5px; border: 2px solid var(--line-2);
   background: #202027 center/cover no-repeat;
@@ -262,7 +265,6 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .chip.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.25); z-index: 3; }
 .chip.edited { border-color: var(--edited); }
 .chip.drag { cursor: grabbing; z-index: 9; opacity: .92; }
-.tray .chip { position: static; transform: none; flex: 0 0 auto; top: auto; }
 /* Drop indicator: a guide at the exact landing point, labelled with the time
    that will be written and what the move costs. */
 .dropline {
@@ -275,15 +277,13 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   padding: 3px 6px; border-radius: 4px; white-space: nowrap;
 }
 .dropline .lab {
-  top: -9px; background: var(--accent); color: #0b0f1a; font-weight: 700;
+  top: 4px; background: var(--accent); color: #0b0f1a; font-weight: 700;
 }
 .dropline .note {
-  bottom: -9px; background: var(--panel-2); color: var(--text);
+  bottom: 8px; background: var(--panel-2); color: var(--text);
   border: 1px solid var(--line-2);
 }
 
-/* Stand-in for a tray chip, which cannot leave the tray during the drag. */
-.chip.ghost { opacity: .55; pointer-events: none; z-index: 7; }
 
 .chipTime {
   position: absolute; left: 50%; bottom: -15px; transform: translateX(-50%);

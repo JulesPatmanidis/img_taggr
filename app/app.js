@@ -54,6 +54,7 @@ async function openFolder(pending) {
     Strip.build();
     emit();
     MapView.fit();
+    TL.fit();
     toast(photoCount(state.photos.length)
       + (res.unreadable ? ` · ${res.unreadable} unreadable` : ''));
     loadThumbs();
@@ -313,12 +314,7 @@ $('btnClearGps').addEventListener('click', () => {
 $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.checked));
 
 /* ── Timeline tools ────────────────────────────────────────────── */
-$('zoomBar').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-zoom]');
-  if (!b) return;
-  for (const x of $('zoomBar').querySelectorAll('[data-zoom]')) x.classList.toggle('on', x === b);
-  TL.setZoom(+b.dataset.zoom);
-});
+$('btnFit').addEventListener('click', () => TL.fit());
 
 /* ── Save ──────────────────────────────────────────────────────── */
 async function openSave() {
@@ -485,19 +481,18 @@ Strip.initStrip({
   toast,
   onResize: resizeViews,
   onReveal: (ids) => reveal(ids, { map: true, time: true }),
-  dropTargets: [MapView.dropTarget],
+  dropTargets: [MapView.dropTarget, TL.dropTarget],
 });
 MapView.initMap($('map'), { onReveal: (id) => reveal([id], { time: true }) });
 TL.initTimeline({
-  days: $('days'),
-  tray: $('tray'),
-  trayWrap: $('trayWrap'),
-  trayCount: $('trayCount'),
-  onReveal: (id) => reveal([id], { map: true }),
+  root: $('tl'),
+  axis: $('tlAxis'),
+  track: $('tlTrack'),
   hint: (msg) => {
-    $('timeHint').textContent = msg ||
-      'Drag a photo along its day to set the time. With several selected, they all shift together.';
+    $('timeHint').textContent = msg
+      || 'Drag a photo to set its time · Ctrl+scroll to zoom · drag empty space to select';
   },
+  onReveal: (id) => reveal([id], { map: true }),
 });
 window.addEventListener('resize', () => { if (timeShown()) TL.render(); });
 applyCaps();

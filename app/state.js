@@ -59,12 +59,6 @@ export const seedDay = (p) =>
 /** `${n} photo` / `${n} photos` — spelled one way everywhere. */
 export const photoCount = (n) => `${n} photo${n === 1 ? '' : 's'}`;
 
-/** Seconds elapsed since midnight — the timeline's x coordinate. */
-export function secOfDay(dt) {
-  if (!dt) return null;
-  return +dt.slice(11, 13) * 3600 + +dt.slice(14, 16) * 60 + +dt.slice(17, 19);
-}
-
 export function fmtDayLabel(day) {
   const d = new Date(`${day}T00:00:00Z`);
   return d.toLocaleDateString(undefined, {

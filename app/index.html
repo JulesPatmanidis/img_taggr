@@ -74,22 +74,14 @@
             </button>
           </div>
           <div class="overlay br">
-            <div class="hint" id="timeHint">Drag a photo along its day to set the time. With several selected, they all shift together.</div>
+            <div class="hint" id="timeHint"></div>
           </div>
-          <div class="trayWrap" id="trayWrap">
-            <div class="trayLabel muted">
-              No date <span id="trayCount"></span>
-            </div>
-            <div class="tray" id="tray"></div>
+          <div id="tl" class="tl">
+            <div id="tlAxis" class="tlAxis" title="Drag to pan"></div>
+            <div id="tlTrack" class="tlTrack"></div>
           </div>
-          <div class="days" id="days"></div>
           <div class="overlay bl tools">
-            <div class="shift" id="zoomBar">
-              <span class="muted">Zoom</span>
-              <button class="btn sm on" data-zoom="1">Day</button>
-              <button class="btn sm" data-zoom="4">6h</button>
-              <button class="btn sm" data-zoom="12">2h</button>
-            </div>
+            <button id="btnFit" class="btn sm" title="Show every dated photo">Fit all</button>
           </div>
         </div>
       </section>
