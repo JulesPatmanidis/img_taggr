@@ -133,6 +133,11 @@ function syncStrip() {
   $('btnSelectAll').disabled = !n;
 }
 
+$('stripList').addEventListener('dblclick', (ev) => {
+  const card = ev.target.closest('.card');
+  if (card) reveal([card.dataset.id], { map: true, time: true });
+});
+
 $('stripList').addEventListener('click', (ev) => {
   const card = ev.target.closest('.card');
   if (!card) return;
@@ -182,6 +187,8 @@ function renderInspector(edited = editedPhotos().length) {
   for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
   $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
+  $('btnShowMap').disabled = !sel.some((p) => p.lat != null);
+  $('btnShowTime').disabled = !sel.some((p) => p.datetime);
 
   $('selLabel').textContent = !has
     ? 'Nothing selected'
@@ -191,6 +198,7 @@ function renderInspector(edited = editedPhotos().length) {
   thumb.style.backgroundImage = shown?.thumb ? `url('${shown.thumb}')` : '';
   thumb.dataset.ext = shown && !shown.thumb ? (shown.ext || '?') : '';
   thumb.dataset.count = sel.length > 1 ? String(sel.length) : '';
+  thumb.classList.toggle('hidden', !has);
 
   $('editLabel').classList.toggle('hidden', edited === 0);
   $('editLabel').textContent = `${edited} unsaved`;
@@ -330,6 +338,19 @@ $('stripResize').addEventListener('pointerdown', (ev) => {
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up, { once: true });
 });
+
+/* ── Reveal ────────────────────────────────────────────────────── */
+/* Views never follow the selection on their own — that makes the map jump
+   while you work. Double-click, or the inspector buttons, ask for it. */
+function reveal(ids, { map = false, time = false }) {
+  // A maximised pane hides the other one, which is exactly what was asked for.
+  if (map && maxed === 'time') toggleMax('time');
+  if (time && maxed === 'map') toggleMax('map');
+  if (map) MapView.reveal(ids);
+  if (time) TL.reveal(ids);
+}
+$('btnShowMap').addEventListener('click', () => reveal([...state.selection], { map: true }));
+$('btnShowTime').addEventListener('click', () => reveal([...state.selection], { time: true }));
 
 /* ── Split stage ───────────────────────────────────────────────── */
 /* Map above, timeline below, so a photo's place and time are on screen
@@ -589,12 +610,13 @@ try {
 } catch { /* open by default */ }
 
 /* ── Boot ──────────────────────────────────────────────────────── */
-MapView.initMap($('map'));
+MapView.initMap($('map'), { onReveal: (id) => reveal([id], { time: true }) });
 TL.initTimeline({
   days: $('days'),
   tray: $('tray'),
   trayWrap: $('trayWrap'),
   trayCount: $('trayCount'),
+  onReveal: (id) => reveal([id], { map: true }),
   hint: (msg) => {
     $('timeHint').textContent = msg ||
       'Drag a photo along its day to set the time. With several selected, they all shift together.';

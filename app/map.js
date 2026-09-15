@@ -17,8 +17,11 @@ let map = null;
 const markers = new Map();
 let route = null;
 let showRoute = true;
+/** Called with a photo id when its pin is double-clicked. */
+let onReveal = () => {};
 
-export function initMap(el) {
+export function initMap(el, opts = {}) {
+  onReveal = opts.onReveal ?? onReveal;
   // Leaflet reads a 3px wobble between press and release as a pan and drops
   // the click, so a slightly shaky click on the map placed nothing.
   L.Draggable.prototype.options.clickTolerance = 10;
@@ -57,6 +60,19 @@ function icon(p) {
     iconSize: [38, 47],
     iconAnchor: [19, 47],
   });
+}
+
+/** Refresh a pin's look in place. Swapping the whole icon would replace the
+ *  element between the two clicks of a double-click, so it would never fire. */
+function paint(m, p) {
+  const el = m.getElement()?.firstElementChild;
+  if (!el) { m.setIcon(icon(p)); return; }
+  const cls = markClasses('pin', p);
+  if (el.className.replace(/ ?pulse/, '') !== cls) {
+    el.className = cls + (el.classList.contains('pulse') ? ' pulse' : '');
+  }
+  const bg = p.thumb ? `url("${p.thumb}")` : '';
+  if (el.style.backgroundImage !== bg) el.style.backgroundImage = bg;
 }
 
 /** Rigid-body drag state, captured on dragstart. */
@@ -111,6 +127,12 @@ function makeMarker(p) {
     clickSelect(p.id, { toggle: ev.ctrlKey || ev.metaKey });
   });
 
+  m.on('dblclick', (e) => {
+    // Double-click means "find this in the timeline", not "zoom the map".
+    L.DomEvent.stopPropagation(e);
+    onReveal(p.id);
+  });
+
   return m;
 }
 
@@ -155,13 +177,29 @@ export function render() {
       const cur = m.getLatLng();
       if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
     }
-    if (p.id !== dragId) m.setIcon(icon(p));
+    if (p.id !== dragId) paint(m, p);
   }
 
   for (const [id, m] of markers) {
     if (!live.has(id)) { m.remove(); markers.delete(id); }
   }
   drawRoute(false);
+}
+
+/** Bring these photos into view and pulse their pins so the eye finds them. */
+export function reveal(ids) {
+  if (!map) return;
+  const pts = state.photos.filter((p) => ids.includes(p.id) && p.lat != null);
+  if (!pts.length) return;
+  if (pts.length === 1) map.setView([pts[0].lat, pts[0].lon], Math.max(map.getZoom(), 15));
+  else map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lon])).pad(0.3), { maxZoom: 17 });
+  for (const p of pts) {
+    const el = markers.get(p.id)?.getElement()?.firstElementChild;
+    if (!el) continue;
+    el.classList.remove('pulse');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('pulse');
+  }
 }
 
 /** Zoom to fit every placed photo. */

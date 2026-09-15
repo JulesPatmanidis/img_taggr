@@ -297,6 +297,7 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 .insName { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .selLabel { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.insShow { display: flex; gap: 6px; flex-wrap: wrap; }
 .insSec { display: flex; flex-direction: column; gap: 9px; }
 .insSec h3 {
   margin: 0; padding-bottom: 5px; border-bottom: 1px solid var(--line);
@@ -408,3 +409,10 @@ main { flex: 1; display: flex; min-height: 0; }
 ::-webkit-scrollbar-thumb { background: #2c2c34; border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* Pulse on reveal, so a pin or chip that just scrolled into view is found. */
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(122,162,247,.85); }
+  100% { box-shadow: 0 0 0 16px rgba(122,162,247,0); }
+}
+.pin.pulse, .chip.pulse { animation: pulse .7s ease-out 2; }

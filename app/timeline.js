@@ -41,6 +41,18 @@ export function initTimeline(refs) {
   els.tray.addEventListener('pointerdown', onPointerDown);
 }
 
+/** Scroll these photos into view and pulse their chips. */
+export function reveal(ids) {
+  const found = ids.map((id) => chips.get(id)).filter(Boolean);
+  if (!found.length) return;
+  found[0].scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+  for (const el of found) {
+    el.classList.remove('pulse');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('pulse');
+  }
+}
+
 const dayStartMs = (day) => dtToMs(`${day}T00:00:00`);
 
 function chipEl(p) {
@@ -195,12 +207,25 @@ function trackUnder(x, y) {
   return null;
 }
 
+const lastPress = { id: null, at: 0 };
+
 function onPointerDown(ev) {
   const hit = ev.target.closest('.chip');
   if (!hit || ev.button !== 0) return;
   const id = hit.dataset.id;
   const p = state.photos.find((q) => q.id === id);
   if (!p) return;
+
+  // Chips are rebuilt on every selection change, so the browser never sees a
+  // click on one element, let alone a dblclick. Count presses ourselves.
+  const now = performance.now();
+  if (lastPress.id === id && now - lastPress.at < 400) {
+    lastPress.id = null;
+    els.onReveal?.(id);
+    return;
+  }
+  lastPress.id = id;
+  lastPress.at = now;
 
   if (ev.ctrlKey || ev.metaKey) {
     clickSelect(id, { toggle: true });
