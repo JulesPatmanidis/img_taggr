@@ -1,10 +1,12 @@
 # img-taggr
 
-Edit photo **time, date and location** metadata through two linked views: a
-**map** and a **day timeline**.
+Edit photo **time, date and location** metadata through two linked views, side
+by side: a **map** and a **timeline**.
 
 Runs two ways from one codebase — as a website with no server, or as a desktop
-app. Photos are never uploaded in either case.
+app. Photos are never uploaded in either case. The network is used only for map
+tiles (OpenStreetMap, and Esri for satellite imagery) and for place search
+(Photon, which receives the search text and nothing else).
 
 ## Why
 
@@ -14,30 +16,47 @@ subscription-only. The browser-based ones (Pic2Map, Jimpl, GeoImgr) upload your
 photos to their servers. And none of them let you *drag a photo along a day* to
 fix its time.
 
-## The two views
+## The photo list and the two views
+
+The list on the left is where photos come from. It is sorted by capture time
+with undated photos first, and **No date** / **No location** filters show what
+is still to do. Drag photos from it onto the map or the timeline. Hover any
+photo for a larger preview; press **Space** for a full-size one.
+
+The map sits above the timeline so a photo's place and time are on screen
+together; press **M** or **T** to give either one the whole stage.
+Double-click a photo to find it in the other view.
 
 **Map** — photos with coordinates appear as pins, joined by a dashed route in
-time order.
+time order. Nearby pins merge into a numbered cluster; photos at the very same
+spot fan out when clicked.
 
-- Click empty map to place every selected photo there.
+- Search for a place to fly there. Search only moves the map.
+- Click the map to place every selected photo there (the cursor turns into a
+  crosshair while a click would do that), or drop photos from the list.
 - Drag a pin to move it. If it belongs to a multi-photo selection, the whole
   selection moves rigidly, keeping its shape.
+- Switch between the street map and satellite imagery.
 - **Interpolate route** positions un-placed photos along the line between placed
   ones, using their timestamps. Place the first and last shot of a walk and the
   rest fall into place. Photos outside the placed time range are left alone and
   reported, never guessed at.
 
-**Timeline** — one track per day, midnight to midnight.
+**Timeline** — one continuous track across the whole set, with day boundaries
+marked. Scroll to pan, Ctrl+scroll (or pinch) to zoom, **Fit all** to see
+everything.
 
-- Drag a photo along its track to set its time; drag it onto another day's track
-  to move it there. A guide line shows the exact landing time before you drop.
+- Drag a photo to set its time, across midnight if need be. A guide line shows
+  the exact landing time before you drop.
 - With several photos selected, **they all shift by the same amount**, so the
   intervals between shots are preserved. This is the fix for the usual problem:
   a camera clock that was wrong for a whole trip. Hold **Alt** to move one photo
   out of formation.
-- Photos with no date wait in a tray; drag one onto a day to date it, or use
-  **Use file dates** to seed the whole tray from file timestamps at once.
-- Overlapping shots stack into lanes rather than piling into one blob.
+- Drag across empty track to select the photos inside a box.
+- Drop undated photos from the list to date them, or date them all at once from
+  their file timestamps and correct from there.
+- Shots that would overlap step down one row each, earliest on top, so a burst
+  reads as a staircase.
 
 ## Editing model
 
@@ -45,8 +64,14 @@ Wall-clock time and UTC offset are **separate fields**. "The clock was 3h47m
 slow" and "I was in another timezone" are different repairs and must not be
 conflated — shifting time never silently rewrites the offset.
 
+The inspector on the right edits the selection directly. Date and time are one
+`YYYY-MM-DD HH:MM:SS` field you can drive from the keyboard; with a mixed
+selection, changing only the date keeps each photo's own time. **Shift by**
+takes `+3h47m`, `-15s` or `-0:15` and moves every selected photo by that much.
+
 Every change is staged in memory. Nothing is written until you press **Save**,
-and amber dots show what is pending. Ctrl+Z walks back 50 steps.
+and amber dots show what is pending. Ctrl+Z walks back 50 steps, and opening
+another folder or closing the app asks before throwing unsaved edits away.
 
 Tags written: `DateTimeOriginal`, `CreateDate`, `ModifyDate`, `OffsetTime*`, and
 `GPSLatitude`/`GPSLongitude` with their hemisphere refs.
@@ -102,9 +127,10 @@ npm run web          # builds the wasm, serves app/ on :8080
 To deploy, build the wasm and publish `app/` as static files — no server-side
 code, so GitHub Pages works.
 
-Chrome and Edge can save straight back to a folder via the File System Access
-API. Other browsers download a ZIP instead; the app detects this and relabels
-the save dialog accordingly.
+Open a folder with the button or by dropping it onto the window. Chrome and Edge
+can save straight back to a folder via the File System Access API. Other
+browsers download a ZIP instead; the app detects this and relabels the save
+dialog accordingly.
 
 ### Desktop
 
@@ -153,13 +179,16 @@ cargo install wasm-bindgen-cli --version 0.2.128
 
 | | |
 |---|---|
-| `Tab` | switch Map ⇄ Timeline |
+| `Space` | preview the selected photo (`←` `→` step, `Esc` closes) |
+| double-click | show a photo in the other view |
+| `M` / `T` | enlarge the map / the timeline |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
-| `Ctrl+A` | select all |
+| `Ctrl+A` | select every photo the list shows |
 | `Ctrl+S` | save |
 | `←` `→` | shift selection 1 min (`Shift` = 10 s) |
 | `Esc` | clear selection |
 | click / `Shift`+click / `Ctrl`+click | select / range / toggle |
+| `?` | list of shortcuts |
 
 ## Layout
 
@@ -167,9 +196,14 @@ cargo install wasm-bindgen-cli --version 0.2.128
 app/                    frontend — plain ES modules, no build step
   backend.js            the seam: Tauri IPC or WASM, one interface
   state.js              shared state, wall-clock helpers, undo journal
-  map.js                Leaflet view, drag, route interpolation
-  timeline.js           day tracks, lane packing, group time shift
-  app.js                filmstrip, inspector, save flow
+  strip.js              photo list: order, filters, dragging photos out
+  map.js                Leaflet view, clustering, drag, route interpolation
+  search.js             place search (Photon)
+  timeline.js           continuous track, rows, group time shift
+  datetime.js           keyboard-driven date-time field and calendar
+  preview.js            hover previews and the lightbox
+  app.js                wiring: loading, inspector, split stage, save flow
+  vendor/               Leaflet and Leaflet.markercluster
   wasm/                 generated — built by ./build-wasm.sh
 engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)
 engine-wasm/src/lib.rs  wasm-bindgen wrapper over engine — no logic of its own
