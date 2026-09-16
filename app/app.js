@@ -2,7 +2,7 @@
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
-  normDt, roundCoord, dayOf, timeOf, seedDay, photoCount, fmtDur,
+  roundCoord, dayOf, photoCount, fmtDur,
   EDITABLE, rebase, revertToBaseline, resetHistory, sortPhotos,
 } from './state.js';
 import * as MapView from './map.js';
@@ -14,6 +14,7 @@ import { initSearch } from './search.js';
 import { hoverPreview, initLightbox, openLightbox } from './preview.js';
 import * as Stage from './stage.js';
 import { stored, store, replay } from './dom.js';
+import { MULTI, common, mergeDateTime, parseShift, seedDateTime } from './edits.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
 const backend = await createBackend();
@@ -134,14 +135,6 @@ async function loadThumbs() {
 }
 
 /* ── Inspector ─────────────────────────────────────────────────── */
-/** Shared value across a selection, or the MULTI sentinel. */
-const MULTI = Symbol('multiple');
-function common(sel, fn) {
-  if (!sel.length) return null;
-  const first = fn(sel[0]);
-  return sel.every((p) => fn(p) === first) ? first : MULTI;
-}
-
 function setField(el, val, fmt = (v) => v) {
   // A re-render must never wipe what someone is typing. Once they commit, the
   // field is fair game again: bad input resets, good input is reformatted.
@@ -188,7 +181,7 @@ function renderInspector(edited = editedPhotos().length) {
   const first = sel.find((p) => p.datetime);
   dtField.set(first?.datetime ?? null, {
     mixed: common(sel, (p) => p.datetime) === MULTI,
-    fallback: `${seedDay(sel[0])}T12:00:00`,
+    fallback: seedDateTime(sel[0]),
   });
   setField($('fTz'), common(sel, (p) => p.offset ?? null));
   setField($('fLat'), common(sel, (p) => p.lat ?? null), (v) => v.toFixed(6));
@@ -205,12 +198,7 @@ function applyField(fn, filter = () => true) {
 
 /** Set the date and/or time of the selection; a null half is left as it is. */
 function applyDateTime({ date, time }) {
-  applyField((p) => {
-    // A photo with no date at all needs both halves before either means anything.
-    const d = date ?? dayOf(p.datetime) ?? seedDay(p);
-    const t = time ?? timeOf(p.datetime) ?? '12:00:00';
-    p.datetime = normDt(`${d}T${t}`);
-  });
+  applyField((p) => { p.datetime = mergeDateTime(p, { date, time }); });
 }
 
 const dtField = dateTimeField($('fDt'), { onCommit: applyDateTime });
@@ -244,17 +232,6 @@ for (const [id, key, lim] of [['fLat', 'lat', 90], ['fLon', 'lon', 180]]) {
     if (!Number.isFinite(v) || Math.abs(v) > lim) { toast(`${key} must be a number within ±${lim}`, true); renderInspector(); return; }
     applyField((p) => { p[key] = roundCoord(v); });
   });
-}
-
-/** "+3h47m", "-15s", "1d 2h", "-0:15" → seconds, or null if unreadable. */
-function parseShift(text) {
-  const t = text.replace(/−/g, '-').replace(/\s+/g, '');
-  let m = /^([+-]?)(\d+):(\d{1,2})(?::(\d{1,2}))?$/.exec(t);
-  if (m) return (m[1] === '-' ? -1 : 1) * (+m[2] * 3600 + +m[3] * 60 + +(m[4] ?? 0));
-  m = /^([+-]?)(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i.exec(t);
-  if (!m || !(m[2] || m[3] || m[4] || m[5])) return null;
-  return (m[1] === '-' ? -1 : 1)
-    * ((+m[2] || 0) * 86400 + (+m[3] || 0) * 3600 + (+m[4] || 0) * 60 + (+m[5] || 0));
 }
 
 $('fShift').addEventListener('keydown', (e) => {

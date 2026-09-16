@@ -148,6 +148,17 @@ npm run build        # .deb / .rpm / AppImage in desktop/target/release/bundle
 
 Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`.
 
+### Tests
+
+```
+npm test             # frontend: state, undo journal, edit logic
+cargo test           # engine: metadata reading and output paths
+```
+
+The frontend tests run on Node's own runner, with no dependencies and no build
+step. They cover the modules that never touch the DOM — `state.js` and
+`edits.js` — so keeping logic out of `app.js` is what keeps it testable.
+
 ## Why not ExifTool
 
 ExifTool is the reference implementation and handles far more than this does.
@@ -198,6 +209,7 @@ cargo install wasm-bindgen-cli --version 0.2.128
 app/                    frontend — plain ES modules, no build step
   backend.js            the seam: Tauri IPC or WASM, one interface
   state.js              shared state, wall-clock helpers, undo journal
+  edits.js              pure edit logic: shift parsing, date/time merging
   strip.js              photo list: order, filters, dragging photos out
   map.js                Leaflet view, clustering, drag, route interpolation
   search.js             place search (Photon)
@@ -209,6 +221,7 @@ app/                    frontend — plain ES modules, no build step
   app.js                wiring: loading, inspector, previews, keyboard, save
   vendor/               Leaflet and Leaflet.markercluster
   wasm/                 generated — built by ./build-wasm.sh
+test/                   node --test over the DOM-free modules
 engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)
 engine-wasm/src/lib.rs  wasm-bindgen wrapper over engine — no logic of its own
 desktop/src/
