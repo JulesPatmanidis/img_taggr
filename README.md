@@ -122,8 +122,12 @@ HEIC natively in the web build.
 ### Web
 
 ```
-npm run web          # builds the wasm, serves app/ on :8080
+npm run web          # builds the wasm, serves app/ on http://localhost:8080
 ```
+
+Open the `localhost` URL, not `0.0.0.0` — only `localhost` and `127.0.0.1` count
+as secure origins, and without one the File System Access API is missing, so
+Chrome and Edge quietly fall back to ZIP downloads instead of saving to a folder.
 
 To deploy, build the wasm and publish `app/` as static files — no server-side
 code, so GitHub Pages works.
