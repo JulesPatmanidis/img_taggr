@@ -289,17 +289,36 @@ async function webBackend() {
         return ingest(await filesIn(dir), dir.name, dir);
       }
 
-      // Fallback: a hidden directory input. Works everywhere, no write access.
+      // Fallback: a directory input. Works everywhere, no write access.
       const input = document.createElement('input');
       input.type = 'file';
       input.multiple = true;
       input.webkitdirectory = true;
       input.accept = exts.map((e) => `.${e}`).join(',');
-      const chosen = await new Promise((resolve) => {
-        input.onchange = () => resolve(input.files);
-        input.oncancel = () => resolve(null);
-        input.click();
-      });
+      input.style.display = 'none';
+      document.body.append(input);
+      let chosen;
+      try {
+        chosen = await new Promise((resolve) => {
+          let settled = false;
+          const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+          input.onchange = () => finish(input.files);
+          input.oncancel = () => finish(null);
+          // `cancel` is not fired for a *directory* picker by every browser —
+          // Brave is one that does not — and this promise is what the whole
+          // open waits on. Without a second way out, dismissing the chooser
+          // hangs the open for ever: the folder label sits on "Reading…" and
+          // the button stays disabled, so the app looks dead from then on.
+          // Focus coming back means the chooser has closed; give `change` a
+          // moment to land first, and if nothing arrived it was dismissed.
+          window.addEventListener('focus', () => {
+            setTimeout(() => finish(input.files?.length ? input.files : null), 500);
+          }, { once: true });
+          input.click();
+        });
+      } finally {
+        input.remove();
+      }
       if (!chosen || !chosen.length) return null;
       const root = chosen[0].webkitRelativePath?.split('/')[0] || 'photos';
       return ingest(chosen, root);
