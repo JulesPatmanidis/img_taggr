@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Serve app/ for the web build.
 
-Two things the stock `python3 -m http.server` gets wrong here, both of which
-fail quietly:
+Two things the stock `python3 -m http.server` gets wrong causing quiet fails:
 
   caching    It sends no cache headers at all, so browsers fall back to
              heuristic freshness and may not revalidate. An edited module then
              loads from cache while its neighbours load fresh, and the mismatch
-             fails at the import — which kills the whole app, since every
+             fails at the import, which kills the whole app, since every
              listener is registered by the module that failed to load. The only
              symptom is one line in the console.
 

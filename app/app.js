@@ -457,7 +457,6 @@ window.addEventListener('keydown', (e) => {
 function renderAll() {
   const edited = editedPhotos().length;
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
-  sortPhotos();
   Strip.sync();
   renderInspector(edited);
   // A hidden pane is redrawn when it comes back, through toggleMax.

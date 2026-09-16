@@ -104,7 +104,9 @@ export function clickSelect(id, { toggle = false, extend = false, anchor = null,
   emit();
 }
 
-/** Capture order: undated first, as the to-do list, then by time, then name. */
+/** Capture order: undated first, as the to-do list, then by time, then name.
+ *  The only ordering in the app: the backends hand photos over unsorted and
+ *  this runs on load and whenever a datetime moves. */
 export function sortPhotos() {
   state.photos.sort((a, b) =>
     (!!a.datetime - !!b.datetime)
@@ -150,6 +152,7 @@ function restore(snap) {
     const s = m.get(p.id);
     if (s) Object.assign(p, pick(s));
   }
+  sortPhotos();
 }
 
 function pushUndo(snap) {
@@ -179,6 +182,8 @@ export function applyEdit(photos, mutate) {
   const changed = list.filter(
     (p, i) => EDITABLE.some((k) => p[k] !== before[i][k])).length;
   if (changed) pushUndo(snap);
+  // Ordering follows datetime, so re-sort here rather than inside the render.
+  if (list.some((p, i) => p.datetime !== before[i].datetime)) sortPhotos();
   emit();
   return changed;
 }

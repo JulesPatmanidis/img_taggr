@@ -61,16 +61,9 @@ fn scan_folder(path: String, recursive: bool) -> Result<ScanResult, String> {
 
     let total = files.len();
     // Chunked so a folder with 10k images does not build one enormous argv.
-    let mut photos: Vec<Photo> = exif::read_batch(&files);
-
-    // Order by capture time when known, filename otherwise. This ordering is
-    // what the timeline and the map-interpolation both walk, so it matters.
-    photos.sort_by(|a, b| match (&a.datetime, &b.datetime) {
-        (Some(x), Some(y)) => x.cmp(y).then_with(|| a.name.cmp(&b.name)),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => a.name.cmp(&b.name),
-    });
+    // Handed back in filename order, because the front end owns the capture
+    // ordering and re-sorts on every datetime edit anyway.
+    let photos: Vec<Photo> = exif::read_batch(&files);
 
     Ok(ScanResult {
         unreadable: total.saturating_sub(photos.len()),
