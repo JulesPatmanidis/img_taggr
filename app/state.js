@@ -152,13 +152,35 @@ function restore(snap) {
   }
 }
 
-/** Call immediately *before* mutating photo fields. */
-export function commit() {
-  state.undo.push(snapshot());
+function pushUndo(snap) {
+  state.undo.push(snap);
   // Snapshots cover every photo, so depth costs memory on large folders; 50
   // steps is far more than interactive editing ever walks back.
   if (state.undo.length > 50) state.undo.shift();
   state.redo.length = 0;
+}
+
+/**
+ * The only way photo fields change. `mutate` receives `photos` — anything
+ * iterable — and edits them in place; everything around it (the undo snapshot,
+ * the re-render) happens here, so no caller can get the order wrong or forget
+ * a step.
+ *
+ * The snapshot is kept only if a field actually moved, so a drag that ends
+ * where it began costs no undo step. Returns how many photos changed, which is
+ * what callers report in a toast.
+ */
+export function applyEdit(photos, mutate) {
+  const list = [...photos];
+  if (!list.length) return 0;
+  const before = list.map(pick);
+  const snap = snapshot();
+  mutate(list);
+  const changed = list.filter(
+    (p, i) => EDITABLE.some((k) => p[k] !== before[i][k])).length;
+  if (changed) pushUndo(snap);
+  emit();
+  return changed;
 }
 
 export function undo() {

@@ -11,7 +11,7 @@
  */
 
 import {
-  state, emit, isEdited, clickSelect, commit, normDt, photoCount,
+  state, emit, isEdited, clickSelect, applyEdit, normDt, photoCount,
 } from './state.js';
 import { stored, store, dragHandle } from './dom.js';
 
@@ -192,9 +192,7 @@ function seedDates() {
   // it is offered explicitly rather than applied behind the user's back.
   const undated = state.photos.filter((p) => !p.datetime && p.file_modified);
   if (!undated.length) return;
-  commit();
-  for (const p of undated) p.datetime = normDt(p.file_modified);
-  emit();
+  applyEdit(undated, (ps) => { for (const p of ps) p.datetime = normDt(p.file_modified); });
   opts.toast(`Dated ${photoCount(undated.length)} from file timestamps — now drag to correct them`);
 }
 

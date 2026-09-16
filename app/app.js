@@ -1,7 +1,7 @@
 /* img-taggr — wiring: folder loading, inspector, previews, keyboard, save. */
 
 import {
-  state, setOnChange, emit, selected, editedPhotos, isEdited, commit, undo, redo,
+  state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
   normDt, roundCoord, dayOf, timeOf, seedDay, photoCount, fmtDur,
   EDITABLE, rebase, revertToBaseline, resetHistory, sortPhotos,
 } from './state.js';
@@ -197,15 +197,10 @@ function renderInspector(edited = editedPhotos().length) {
 
 /**
  * Apply `fn` to every selected photo that `filter` accepts, as one undo step.
- * Returns how many were touched so callers can report it.
+ * Returns how many photos it actually changed, so callers can report it.
  */
 function applyField(fn, filter = () => true) {
-  const sel = selected().filter(filter);
-  if (!sel.length) return 0;
-  commit();
-  for (const p of sel) fn(p);
-  emit();
-  return sel.length;
+  return applyEdit(selected().filter(filter), (ps) => { for (const p of ps) fn(p); });
 }
 
 /** Set the date and/or time of the selection; a null half is left as it is. */

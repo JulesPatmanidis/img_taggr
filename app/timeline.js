@@ -16,7 +16,7 @@
  */
 
 import {
-  state, selected, commit, emit, clickSelect, markClasses, photoCount,
+  state, selected, applyEdit, emit, clickSelect, markClasses, photoCount,
   dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
 } from './state.js';
 import { replay } from './dom.js';
@@ -449,19 +449,16 @@ function onPointerUp() {
   }
 
   if (!d.moved || !d.delta) { render(); return; }
-  commit();
-  for (const q of d.group) q.datetime = msToDt(d.origin.get(q.id) + d.delta);
-  emit();
+  applyEdit(d.group, (ps) => {
+    for (const q of ps) q.datetime = msToDt(d.origin.get(q.id) + d.delta);
+  });
 }
 
 /** Shift every selected photo that has a date by `sec` seconds. */
 export function shiftSelection(sec) {
-  const sel = selected().filter((p) => p.datetime);
-  if (!sel.length) return 0;
-  commit();
-  for (const p of sel) p.datetime = msToDt(dtToMs(p.datetime) + sec * 1000);
-  emit();
-  return sel.length;
+  return applyEdit(selected().filter((p) => p.datetime), (ps) => {
+    for (const p of ps) p.datetime = msToDt(dtToMs(p.datetime) + sec * 1000);
+  });
 }
 
 /* ── Drops from the filmstrip ──────────────────────────────────── */
@@ -515,10 +512,10 @@ export const dropTarget = {
     incoming = null;
     els.track.classList.remove('dropping');
     hideDrop();
-    commit();
-    for (const p of plan.dated) p.datetime = msToDt(dtToMs(p.datetime) + plan.delta);
-    for (const p of plan.undated) p.datetime = msToDt(plan.target);
-    emit();
+    applyEdit([...plan.dated, ...plan.undated], () => {
+      for (const p of plan.dated) p.datetime = msToDt(dtToMs(p.datetime) + plan.delta);
+      for (const p of plan.undated) p.datetime = msToDt(plan.target);
+    });
   },
 };
 

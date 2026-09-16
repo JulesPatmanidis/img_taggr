@@ -12,7 +12,7 @@
  */
 
 import {
-  state, selected, commit, emit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
+  state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
 } from './state.js';
 import { replay } from './dom.js';
 
@@ -63,12 +63,12 @@ export function initMap(el, opts = {}) {
 /** Move `photos` to `latlng` as one undo step. Leaflet's longitude runs past
  *  ±180 once the world has been panned round, so wrap it back. */
 function placeAt(photos, latlng) {
-  commit();
-  for (const p of photos) {
-    p.lat = roundCoord(latlng.lat);
-    p.lon = roundCoord(((latlng.lng + 180) % 360 + 360) % 360 - 180);
-  }
-  emit();
+  applyEdit(photos, (ps) => {
+    for (const p of ps) {
+      p.lat = roundCoord(latlng.lat);
+      p.lon = roundCoord(((latlng.lng + 180) % 360 + 360) % 360 - 180);
+    }
+  });
 }
 
 /* Neither needs a key or an account, so the page works for anyone who opens
@@ -203,7 +203,6 @@ function makeMarker(p) {
     // Dragging a marker outside the current selection re-selects just that photo,
     // matching how every file manager behaves.
     if (!state.selection.has(p.id)) clickSelect(p.id);
-    commit();
     const group = selected().filter((q) => q.lat != null && q.id !== p.id);
     for (const q of group) {
       // Tell the cluster plugin these are being dragged too, or it regroups
@@ -232,20 +231,24 @@ function makeMarker(p) {
 
   m.on('dragend', (e) => {
     if (!drag) return;
-    const dLat = e.target.getLatLng().lat - drag.from.lat;
-    const dLon = e.target.getLatLng().lng - drag.from.lng;
-    p.lat = roundCoord(drag.origin.lat + dLat);
-    p.lon = roundCoord(drag.origin.lon + dLon);
-    for (const g of drag.group) {
-      g.q.lat = roundCoord(g.lat + dLat);
-      g.q.lon = roundCoord(g.lon + dLon);
+    const d = drag;
+    drag = null;
+    dragId = null;
+    const dLat = e.target.getLatLng().lat - d.from.lat;
+    const dLon = e.target.getLatLng().lng - d.from.lng;
+    for (const g of d.group) {
       // The plugin ignored their moves, so let render add them afresh.
       const mk = markers.get(g.q.id);
       if (mk) { delete mk.__dragStart; cluster.removeLayer(mk); markers.delete(g.q.id); }
     }
-    drag = null;
-    dragId = null;
-    emit();
+    applyEdit([p, ...d.group.map((g) => g.q)], () => {
+      p.lat = roundCoord(d.origin.lat + dLat);
+      p.lon = roundCoord(d.origin.lon + dLon);
+      for (const g of d.group) {
+        g.q.lat = roundCoord(g.lat + dLat);
+        g.q.lon = roundCoord(g.lon + dLon);
+      }
+    });
   });
 
   m.on('click', (e) => {
@@ -387,24 +390,22 @@ export function interpolate() {
       : 'Place at least two photos on the map first — interpolation needs a route to follow.' };
   }
 
-  let filled = 0;
-  let committed = false;
-  for (let k = 0; k < anchorIdx.length - 1; k++) {
-    const a = timed[anchorIdx[k]];
-    const b = timed[anchorIdx[k + 1]];
-    const ta = dtToMs(a.datetime);
-    const tb = dtToMs(b.datetime);
-    for (let i = anchorIdx[k] + 1; i < anchorIdx[k + 1]; i++) {
-      const p = timed[i];
-      if (p.lat != null) continue;
-      if (!committed) { commit(); committed = true; }
-      // Equal timestamps would divide by zero; fall back to the first anchor.
-      const f = tb === ta ? 0 : (dtToMs(p.datetime) - ta) / (tb - ta);
-      p.lat = roundCoord(a.lat + (b.lat - a.lat) * f);
-      p.lon = roundCoord(a.lon + (b.lon - a.lon) * f);
-      filled++;
+  const filled = applyEdit(timed, () => {
+    for (let k = 0; k < anchorIdx.length - 1; k++) {
+      const a = timed[anchorIdx[k]];
+      const b = timed[anchorIdx[k + 1]];
+      const ta = dtToMs(a.datetime);
+      const tb = dtToMs(b.datetime);
+      for (let i = anchorIdx[k] + 1; i < anchorIdx[k + 1]; i++) {
+        const p = timed[i];
+        if (p.lat != null) continue;
+        // Equal timestamps would divide by zero; fall back to the first anchor.
+        const f = tb === ta ? 0 : (dtToMs(p.datetime) - ta) / (tb - ta);
+        p.lat = roundCoord(a.lat + (b.lat - a.lat) * f);
+        p.lon = roundCoord(a.lon + (b.lon - a.lon) * f);
+      }
     }
-  }
+  });
 
   const outside = timed.filter((p) => p.lat == null).length;
   if (!filled) {
@@ -412,7 +413,6 @@ export function interpolate() {
       ? `Nothing to fill — the ${outside} un-placed photo${outside > 1 ? 's fall' : ' falls'} outside the placed range.`
       : 'Every photo in range already has a location.' };
   }
-  emit();
   return {
     ok: true,
     msg: `Placed ${filled} photo${filled > 1 ? 's' : ''} along the route` +
