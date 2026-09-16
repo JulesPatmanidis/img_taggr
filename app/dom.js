@@ -43,3 +43,14 @@ export function replay(el, cls) {
   void el.offsetWidth; // force a style flush so the animation restarts
   el.classList.add(cls);
 }
+
+/** Text with `code spans` in it, as DOM nodes. Built rather than assigned as HTML,
+ *  so a label can carry a filename without the string ever being parsed. */
+export function withCode(text) {
+  const frag = document.createDocumentFragment();
+  text.split(/`([^`]+)`/).forEach((part, i) => {
+    if (i % 2 === 0) frag.append(part);
+    else frag.append(Object.assign(document.createElement('code'), { textContent: part }));
+  });
+  return frag;
+}

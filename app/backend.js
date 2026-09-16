@@ -22,8 +22,60 @@
  *   loadThumb(photo)        -> data URL | null
  *   loadPreview(photo)      -> URL of a full-size image | null
  *   suggestOutput(label)    -> string
- *   save(items, opts)       -> [{path, ok, error}]
+ *   save(items, {mode, outDir})
+ *                           -> {results: [{path, ok, error}], destination}
+ *                              destination says where the files actually
+ *                              landed, which is not always where they were
+ *                              asked to go — see SAVE_MODES below.
  */
+
+/* ── Save modes ────────────────────────────────────────────────── */
+
+/**
+ * Every save mode there is, declared once. The radio list is rendered from
+ * this, and `desktop/src/lib.rs` matches the same ids exhaustively, so a mode
+ * cannot exist in one half of the app and not the other.
+ *
+ * `needsOutDir`     the mode writes somewhere else, so it needs a destination
+ * `writesOriginals` the source files are opened for writing
+ * `destructive`     ...and not recoverable afterwards
+ */
+export const SAVE_MODES = [
+  {
+    id: 'copy',
+    label: 'Write copies',
+    hint: 'Originals untouched; tagged files go to a new folder.',
+    needsOutDir: true, writesOriginals: false, destructive: false,
+  },
+  {
+    id: 'backup',
+    label: 'Edit in place, keep backups',
+    hint: 'Each original is preserved as `name.ext_original`.',
+    needsOutDir: false, writesOriginals: true, destructive: false,
+  },
+  {
+    id: 'inplace',
+    label: 'Edit in place',
+    hint: 'Overwrites originals. No undo once written.',
+    needsOutDir: false, writesOriginals: true, destructive: true,
+  },
+];
+
+/** The mode with this id. Unknown ids are a programming error, not input: the
+ *  destructive mode must never be something you reach by mistyping. */
+export function saveMode(id) {
+  const mode = SAVE_MODES.find((m) => m.id === id);
+  if (!mode) throw new Error(`unknown save mode: ${id}`);
+  return mode;
+}
+
+/** The modes a backend can actually perform, in the order they are offered. */
+export const modesFor = (caps) => SAVE_MODES.filter((m) => caps.saveModes.includes(m.id));
+
+/** Where a save put the files, for the message afterwards. */
+const wroteTo = (label) => ({ kind: 'folder', label });
+const downloaded = (label) => ({ kind: 'download', label });
+const editedOriginals = () => ({ kind: 'originals', label: null });
 
 /* ── Desktop (Tauri) ───────────────────────────────────────────── */
 
@@ -91,8 +143,12 @@ function tauriBackend() {
       });
     },
 
-    save(items, { mode, outDir }) {
-      return invoke('apply_edits', { items, mode, outDir: mode === 'copy' ? outDir : null });
+    async save(items, { mode, outDir }) {
+      const copies = saveMode(mode).needsOutDir;
+      const results = await invoke('apply_edits', {
+        items, mode, outDir: copies ? outDir : null,
+      });
+      return { results, destination: copies ? wroteTo(outDir) : editedOriginals() };
     },
   };
 }
@@ -365,18 +421,19 @@ async function webBackend() {
         }
       }
 
-      if (!written.length) return results;
+      const folder = outDir || 'tagged';
+      if (!written.length) return { results, destination: wroteTo(folder) };
 
       if (dest) {
         try {
-          const target = await dest.getDirectoryHandle(outDir || 'tagged', { create: true });
+          const target = await dest.getDirectoryHandle(folder, { create: true });
           for (const w of written) {
             const fh = await target.getFileHandle(w.name, { create: true });
             const s = await fh.createWritable();
             await s.write(w.bytes);
             await s.close();
           }
-          return results;
+          return { results, destination: wroteTo(folder) };
         } catch (e) {
           // Permission withdrawn or quota hit — fall through to the download
           // path rather than losing the user's work.
@@ -384,8 +441,11 @@ async function webBackend() {
         }
       }
 
-      downloadZip(written, `${outDir || 'tagged'}.zip`);
-      return results;
+      // The files are written, but not where they were asked to go. Say so, or
+      // the message names a folder the user will not find them in.
+      const zip = `${folder}.zip`;
+      downloadZip(written, zip);
+      return { results, destination: downloaded(zip) };
     },
   };
 }

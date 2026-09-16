@@ -516,6 +516,9 @@ path.route, path.spiderLeg { stroke: var(--accent); }
   border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
 }
 .radio:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* The one mode that cannot be undone says so in colour, not only in words. */
+.radio.danger:has(input:checked) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.radio.danger:has(input:checked) span { color: var(--danger); }
 .radio div { display: flex; flex-direction: column; gap: 1px; }
 .radio b { font-size: 12px; font-weight: 600; }
 .radio span { font-size: 11px; }

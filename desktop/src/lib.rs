@@ -9,7 +9,7 @@ mod thumb;
 
 use exif::{Edit, Photo};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -97,6 +97,21 @@ async fn load_preview(path: String, orientation: u32) -> Option<String> {
     render_image(path, orientation, thumb::Size::Preview).await
 }
 
+/// How a save writes its results. The ids match `SAVE_MODES` in
+/// `app/backend.js`, which renders the radio list from the same names; an id
+/// that is not one of these fails to deserialize, so a typo is an error rather
+/// than a silent fall-through to overwriting the originals.
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum SaveMode {
+    /// Tagged copies into an output folder; originals never opened for writing.
+    Copy,
+    /// Edit the original, keeping `name.ext_original` beside it.
+    Backup,
+    /// Edit the original with no backup.
+    Inplace,
+}
+
 #[derive(Serialize)]
 pub struct ItemResult {
     path: String,
@@ -107,21 +122,22 @@ pub struct ItemResult {
 #[tauri::command]
 async fn apply_edits(
     items: Vec<Edit>,
-    mode: String,
+    mode: SaveMode,
     out_dir: Option<String>,
 ) -> Result<Vec<ItemResult>, String> {
-    // "copy" is the default because it is the only mode where a mistake costs
-    // nothing: the originals are never opened for writing.
-    if mode == "copy" {
-        let dir = out_dir
-            .as_deref()
-            .filter(|d| !d.is_empty())
-            .ok_or_else(|| "copy mode needs an output folder".to_string())?;
-        std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {dir}: {e}"))?;
-    }
-
-    // Validated above, so copy mode always has a directory by this point.
-    let copy_dir = (mode == "copy").then(|| PathBuf::from(out_dir.unwrap_or_default()));
+    // Exhaustive on purpose: a new mode must decide here whether it writes
+    // somewhere else, rather than inheriting "edit the original" by default.
+    let copy_dir = match mode {
+        SaveMode::Copy => {
+            let dir = out_dir
+                .as_deref()
+                .filter(|d| !d.is_empty())
+                .ok_or_else(|| "copy mode needs an output folder".to_string())?;
+            std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {dir}: {e}"))?;
+            Some(PathBuf::from(dir))
+        }
+        SaveMode::Backup | SaveMode::Inplace => None,
+    };
 
     let results = tauri::async_runtime::spawn_blocking(move || {
         items
@@ -147,7 +163,7 @@ async fn apply_edits(
                         }
                         (dst, false)
                     }
-                    None => (src.clone(), mode == "backup"),
+                    None => (src.clone(), mode == SaveMode::Backup),
                 };
 
                 match exif::write_one(&target, edit, keep_backup) {

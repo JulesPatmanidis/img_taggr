@@ -7,13 +7,13 @@ import {
 } from './state.js';
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
-import { createBackend } from './backend.js';
+import { createBackend, saveMode, modesFor } from './backend.js';
 import { dateTimeField, calendar } from './datetime.js';
 import * as Strip from './strip.js';
 import { initSearch } from './search.js';
 import { hoverPreview, initLightbox, openLightbox } from './preview.js';
 import * as Stage from './stage.js';
-import { stored, store, replay } from './dom.js';
+import { stored, store, replay, withCode } from './dom.js';
 import { MULTI, common, mergeDateTime, parseShift, seedDateTime } from './edits.js';
 
 /** Desktop or browser engine — chosen once, at boot. */
@@ -293,19 +293,21 @@ $('btnFit').addEventListener('click', () => TL.fit());
 async function openSave() {
   const n = editedPhotos().length;
   if (!n) return;
+  const safe = modesFor(backend.caps).every((m) => !m.writesOriginals);
   $('modalSummary').textContent = `${photoCount(n)} changed.`
-    + (backend.caps.saveModes.includes('inplace') ? '' : ' Originals are never modified.');
+    + (safe ? ' Originals are never modified.' : '');
   if (!$('fOut').value && state.folder) {
     $('fOut').value = await backend.suggestOutput(state.folder);
   }
   $('modal').classList.remove('hidden');
 }
 
+/** The chosen mode, as its entry in SAVE_MODES rather than a bare string. */
 function currentMode() {
-  return $('modeRadios').querySelector('input[name=mode]:checked').value;
+  return saveMode($('modeRadios').querySelector('input[name=mode]:checked').value);
 }
 $('modeRadios').addEventListener('change', () => {
-  $('outRow').classList.toggle('hidden', currentMode() !== 'copy');
+  $('outRow').classList.toggle('hidden', !currentMode().needsOutDir);
 });
 $('btnPickOut').addEventListener('click', async () => {
   const d = await backend.pickOutput();
@@ -317,7 +319,7 @@ $('btnSave').addEventListener('click', openSave);
 $('btnConfirm').addEventListener('click', async () => {
   const mode = currentMode();
   const outDir = $('fOut').value.trim();
-  if (mode === 'copy' && !outDir) { toast('Choose an output folder', true); return; }
+  if (mode.needsOutDir && !outDir) { toast('Choose an output folder', true); return; }
 
   const items = editedPhotos().map((p) => ({
     path: p.path,
@@ -333,7 +335,7 @@ $('btnConfirm').addEventListener('click', async () => {
   $('btnConfirm').disabled = true;
   $('btnConfirm').textContent = 'Writing…';
   try {
-    const results = await backend.save(items, { mode, outDir });
+    const { results, destination } = await backend.save(items, { mode: mode.id, outDir });
     const ok = results.filter((r) => r.ok);
     const bad = results.filter((r) => !r.ok);
 
@@ -348,9 +350,7 @@ $('btnConfirm').addEventListener('click', async () => {
       console.error('img-taggr write failures', bad);
       toast(`${ok.length} written · ${bad.length} failed — first error: ${bad[0].error}`, true);
     } else {
-      toast(mode === 'copy'
-        ? `Wrote ${photoCount(ok.length)} to ${outDir}`
-        : `Updated ${photoCount(ok.length)}`);
+      toast(describeSave(ok.length, destination));
     }
   } catch (e) {
     toast(String(e), true);
@@ -360,14 +360,44 @@ $('btnConfirm').addEventListener('click', async () => {
   }
 });
 
+/** One save-mode radio, built from its entry in SAVE_MODES. */
+function modeRadio(mode) {
+  const label = document.createElement('label');
+  label.className = 'radio';
+  label.classList.toggle('danger', mode.destructive);
+
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = 'mode';
+  input.value = mode.id;
+
+  const text = document.createElement('div');
+  const name = document.createElement('b');
+  name.textContent = mode.label;
+  const hint = document.createElement('span');
+  hint.className = 'muted';
+  hint.append(withCode(mode.hint));
+  text.append(name, hint);
+
+  label.append(input, text);
+  return label;
+}
+
+/** Where the files ended up — which is not always where they were asked to go,
+ *  so this reads the destination the backend reports rather than the mode. */
+function describeSave(n, { kind, label }) {
+  if (kind === 'download') return `Downloaded ${photoCount(n)} as ${label}`;
+  if (kind === 'folder') return `Wrote ${photoCount(n)} to ${label}`;
+  return `Updated ${photoCount(n)}`;
+}
+
 /** Offer exactly the save modes this backend can perform, rather than showing
  *  controls that would fail. */
 function applyCaps() {
-  const modes = backend.caps.saveModes;
-  for (const input of $('modeRadios').querySelectorAll('input[name=mode]')) {
-    input.closest('.radio').classList.toggle('hidden', !modes.includes(input.value));
-  }
-  $('modeRadios').querySelector(`input[value="${modes[0]}"]`).checked = true;
+  const modes = modesFor(backend.caps);
+  $('modeRadios').replaceChildren(...modes.map(modeRadio));
+  $('modeRadios').querySelector('input[name=mode]').checked = true;
+  $('outRow').classList.toggle('hidden', !currentMode().needsOutDir);
   // With nothing to choose between, the radio list is noise.
   $('modeRadios').classList.toggle('hidden', modes.length === 1);
 

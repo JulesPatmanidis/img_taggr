@@ -202,29 +202,9 @@
     <div class="modal">
       <h2>Save changes</h2>
       <p class="muted" id="modalSummary"></p>
-      <div class="radios" id="modeRadios">
-        <label class="radio">
-          <input type="radio" name="mode" value="copy" checked />
-          <div>
-            <b>Write copies</b>
-            <span class="muted">Originals untouched; tagged files go to a new folder.</span>
-          </div>
-        </label>
-        <label class="radio">
-          <input type="radio" name="mode" value="backup" />
-          <div>
-            <b>Edit in place, keep backups</b>
-            <span class="muted">Each original is preserved as <code>name.ext_original</code>.</span>
-          </div>
-        </label>
-        <label class="radio">
-          <input type="radio" name="mode" value="inplace" />
-          <div>
-            <b>Edit in place</b>
-            <span class="muted">Overwrites originals. No undo once written.</span>
-          </div>
-        </label>
-      </div>
+      <!-- Rendered from SAVE_MODES in backend.js, which is also what the
+           engine matches on — see applyCaps() in app.js. -->
+      <div class="radios" id="modeRadios"></div>
       <label class="fld wide" id="outRow">
         <span>Output folder</span>
         <div class="row">

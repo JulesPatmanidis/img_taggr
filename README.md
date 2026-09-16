@@ -207,7 +207,7 @@ cargo install wasm-bindgen-cli --version 0.2.128
 
 ```
 app/                    frontend — plain ES modules, no build step
-  backend.js            the seam: Tauri IPC or WASM, one interface
+  backend.js            the seam: Tauri IPC or WASM, one interface; save modes
   state.js              shared state, wall-clock helpers, undo journal
   edits.js              pure edit logic: shift parsing, date/time merging
   strip.js              photo list: order, filters, dragging photos out
