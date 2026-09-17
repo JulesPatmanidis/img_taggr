@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine desktop
+      - run: cargo test --manifest-path engine/Cargo.toml
+      - run: cargo test --manifest-path desktop/Cargo.toml
+
+  # app/wasm/ is committed so that app/ can be served as static files with no
+  # toolchain. That only holds while the binary matches the source, so a change
+  # to either engine crate has to come with a rebuilt wasm in the same push.
+  # Byte-comparing against a fresh build here would instead fail every time the
+  # runner's rustc moves, so this checks the pairing, not the bytes.
+  wasm-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Engine changes must ship a rebuilt wasm
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            echo "No usable base commit to diff against, skipping."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" HEAD)
+          engine=$(echo "$changed" | grep -E '^engine(-wasm)?/(src/|Cargo\.(toml|lock))' || true)
+          wasm=$(echo "$changed" | grep -E '^app/wasm/' || true)
+          if [ -n "$engine" ] && [ -z "$wasm" ]; then
+            echo "::error::Engine sources changed but app/wasm/ was not rebuilt."
+            echo "Changed engine files:"
+            echo "$engine"
+            echo "Run ./build-wasm.sh and commit app/wasm/."
+            exit 1
+          fi
+          echo "OK"

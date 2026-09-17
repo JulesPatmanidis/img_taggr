@@ -1,0 +1,56 @@
+# Build the wasm engine and publish app/ to GitHub Pages.
+#
+# One-time setup: repo Settings → Pages → Source = "GitHub Actions".
+# The demo then lands at https://<owner>.github.io/<repo>/
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the deploy job to claim the Pages environment, and let a newer push
+# supersede a running build rather than queueing behind it.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the wasm toolchain
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine-wasm
+
+      # Pinned to the same version build-wasm.sh expects: the generated JS
+      # glue and the wasm binary have to come from one wasm-bindgen.
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.128 --locked
+
+      - name: Build the engine
+        run: ./build-wasm.sh
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
