@@ -19,10 +19,22 @@ export const state = {
 
 /* ── Change notification ───────────────────────────────────────── */
 /** Every mutation funnels through one re-render; there has never been a second
- *  event or a second subscriber, so this is a callback rather than a bus. */
+ *  event or a second subscriber, so this is a callback rather than a bus.
+ *
+ *  What the callback gets is the *reason*, which is what lets a view do less
+ *  than a full rebuild:
+ *    'photos'     the list itself was replaced
+ *    'edits'      field values moved
+ *    'thumbs'     images arrived
+ *    'selection'  only the selection changed
+ */
 let onChange = () => {};
 export const setOnChange = (fn) => { onChange = fn; };
-export const emit = () => onChange();
+export const emit = (reason) => onChange(reason);
+
+/** The reasons that change nothing but how a photo looks, so a view can patch
+ *  its nodes instead of laying them out again. */
+export const isRepaint = (reason) => reason === 'selection' || reason === 'thumbs';
 
 /* ── Wall-clock helpers ────────────────────────────────────────── */
 export const pad = (n, w = 2) => String(n).padStart(w, '0');
@@ -101,7 +113,7 @@ export function clickSelect(id, { toggle = false, extend = false, anchor = null,
     state.selection.clear();
     state.selection.add(id);
   }
-  emit();
+  emit('selection');
 }
 
 /** Capture order: undated first, as the to-do list, then by time, then name.
@@ -128,6 +140,14 @@ export const editedPhotos = () => state.photos.filter(isEdited);
 export const markClasses = (base, p) =>
   [base, state.selection.has(p.id) ? 'sel' : '', isEdited(p) ? 'edited' : '']
     .filter(Boolean).join(' ');
+
+/** The same two markers, onto a node that already exists. Toggling rather than
+ *  reassigning leaves whatever class a gesture put there — `drag`, `pulse` —
+ *  alone, which is what makes a repaint safe mid-gesture. */
+export const mark = (el, p) => {
+  el.classList.toggle('sel', state.selection.has(p.id));
+  el.classList.toggle('edited', isEdited(p));
+};
 
 /** Treat the photo's current values as saved — its new baseline. */
 export const rebase = (p) => { p.orig = pick(p); };
@@ -184,7 +204,7 @@ export function applyEdit(photos, mutate) {
   if (changed) pushUndo(snap);
   // Ordering follows datetime, so re-sort here rather than inside the render.
   if (list.some((p, i) => p.datetime !== before[i].datetime)) sortPhotos();
-  emit();
+  emit('edits');
   return changed;
 }
 

@@ -12,7 +12,8 @@
  */
 
 import {
-  state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
+  state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, mark,
+  isEdited, isRepaint,
 } from './state.js';
 import { replay, keyedList } from './dom.js';
 
@@ -184,10 +185,7 @@ function clusterIcon(c) {
 function paint(m, p) {
   const el = m.getElement()?.firstElementChild;
   if (!el) { m.setIcon(icon(p)); return; }
-  const cls = markClasses('pin', p);
-  if (el.className.replace(/ ?pulse/, '') !== cls) {
-    el.className = cls + (el.classList.contains('pulse') ? ' pulse' : '');
-  }
+  mark(el, p);
   const bg = p.thumb ? `url("${p.thumb}")` : '';
   if (el.style.backgroundImage !== bg) el.style.backgroundImage = bg;
 }
@@ -308,12 +306,13 @@ function paintPin(m, p) {
   paint(m, p);
 }
 
-export function render() {
+export function render(reason) {
   if (!map) return;
   markers.sync(state.photos.filter((p) => p.lat != null && p.lon != null));
   // Selection and edits change what a cluster should look like.
   if (!drag && !fannedOut) cluster.refreshClusters();
-  drawRoute(false);
+  // The route follows positions and times, so a selection never moves it.
+  if (!isRepaint(reason)) drawRoute(false);
 }
 
 /** Photos dragged in from the filmstrip land where they are dropped. */

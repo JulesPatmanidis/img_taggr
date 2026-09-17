@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   state, applyEdit, setOnChange, undo, redo, isEdited, rebase, resetHistory,
   sortPhotos, dtToMs, msToDt, normDt,
+  emit, isRepaint, clickSelect,
 } from '../app/state.js';
 
 /** A folder of photos, plus a count of the re-renders they trigger. */
@@ -179,4 +180,50 @@ test('dtToMs ignores the machine timezone', () => {
 
 test('dtToMs rejects what it cannot read', () => {
   for (const bad of [null, '', 'yesterday', '2020-06-01']) assert.equal(dtToMs(bad), null);
+});
+
+/* ── Emit reasons ──────────────────────────────────────────────── */
+
+/** Same folder, but recording *why* each re-render was asked for. */
+function reasons(...photos) {
+  const log = [];
+  folder(...photos);
+  setOnChange((reason) => log.push(reason));
+  return log;
+}
+
+test('emit: an edit is one render, for the reason "edits"', () => {
+  const log = reasons({ lat: 1 }, { lat: 2 });
+  applyEdit(state.photos, (ps) => { for (const p of ps) p.lat = 5; });
+  assert.deepEqual(log, ['edits']);
+});
+
+test('emit: a no-op edit still renders, and still says "edits"', () => {
+  const log = reasons({ lat: 1 });
+  applyEdit(state.photos, () => {});
+  assert.deepEqual(log, ['edits']);
+});
+
+test('emit: selecting says "selection", so the views can skip a re-layout', () => {
+  const log = reasons({}, {});
+  clickSelect('p0');
+  clickSelect('p1', { toggle: true });
+  assert.deepEqual(log, ['selection', 'selection']);
+});
+
+test('emit: undo and redo are edits, not selections', () => {
+  const log = reasons({ lat: 1 });
+  applyEdit(state.photos, (ps) => { ps[0].lat = 2; });
+  log.length = 0;
+  undo(); emit('edits');
+  redo(); emit('edits');
+  assert.deepEqual(log, ['edits', 'edits']);
+});
+
+test('isRepaint: only selection and thumbs skip the layout', () => {
+  assert.equal(isRepaint('selection'), true);
+  assert.equal(isRepaint('thumbs'), true);
+  assert.equal(isRepaint('edits'), false);
+  assert.equal(isRepaint('photos'), false);
+  assert.equal(isRepaint(undefined), false);
 });

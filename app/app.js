@@ -97,7 +97,7 @@ async function openFolder(pending) {
     $('folderLabel').title = res.label;
     sortPhotos();
     Strip.build();
-    emit();
+    emit('photos');
     MapView.fit();
     TL.fit();
     toast(photoCount(state.photos.length)
@@ -116,7 +116,7 @@ async function loadThumbs() {
   const queue = state.photos.slice();
   const token = state.folder;
   let dirty = false;
-  const flush = () => { if (dirty) { dirty = false; renderAll(); } };
+  const flush = () => { if (dirty) { dirty = false; renderAll('thumbs'); } };
   const ticker = setInterval(flush, 220);
 
   const worker = async () => {
@@ -344,7 +344,7 @@ $('btnConfirm').addEventListener('click', async () => {
     for (const p of state.photos) if (okSet.has(p.path)) rebase(p);
     resetHistory();
     $('modal').classList.add('hidden');
-    emit();
+    emit('edits');
 
     if (bad.length) {
       console.error('img-taggr write failures', bad);
@@ -434,14 +434,14 @@ window.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     const did = e.shiftKey ? redo() : undo();
-    if (did) emit(); else toast(e.shiftKey ? 'Nothing to redo' : 'Nothing to undo');
+    if (did) emit('edits'); else toast(e.shiftKey ? 'Nothing to redo' : 'Nothing to undo');
     return;
   }
   if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); Strip.selectAll(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); openSave(); return; }
   if (e.key === 'Escape') {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
-    state.selection.clear(); emit(); return;
+    state.selection.clear(); emit('selection'); return;
   }
   const pane = !mod && !e.altKey && Stage.paneForKey(e.key);
   if (pane) { Stage.toggleMax(pane); return; }
@@ -454,14 +454,15 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ── Render loop ───────────────────────────────────────────────── */
-function renderAll() {
+function renderAll(reason) {
   const edited = editedPhotos().length;
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
   Strip.sync();
   renderInspector(edited);
-  // A hidden pane is redrawn when it comes back, through toggleMax.
-  if (Stage.mapShown()) MapView.render();
-  if (Stage.timeShown()) TL.render();
+  // A hidden pane is redrawn when it comes back, through toggleMax. The reason
+  // rides along so a view can patch itself instead of laying out again.
+  if (Stage.mapShown()) MapView.render(reason);
+  if (Stage.timeShown()) TL.render(reason);
 
   const sel = selected();
   let placed = 0;
@@ -485,8 +486,8 @@ async function onOpenClick() {
 }
 $('btnOpen').addEventListener('click', onOpenClick);
 $('btnWelcomeOpen').addEventListener('click', onOpenClick);
-$('btnUndo').addEventListener('click', () => { if (undo()) emit(); });
-$('btnRedo').addEventListener('click', () => { if (redo()) emit(); });
+$('btnUndo').addEventListener('click', () => { if (undo()) emit('edits'); });
+$('btnRedo').addEventListener('click', () => { if (redo()) emit('edits'); });
 
 /* ── Shortcut list ─────────────────────────────────────────────── */
 function showKeys(on) {

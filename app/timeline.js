@@ -16,8 +16,8 @@
  */
 
 import {
-  state, selected, applyEdit, emit, clickSelect, markClasses, photoCount,
-  dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
+  state, selected, applyEdit, emit, clickSelect, markClasses, mark, isRepaint,
+  photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
 } from './state.js';
 import { replay, keyedList } from './dom.js';
 
@@ -123,8 +123,13 @@ function renderSoon() {
   requestAnimationFrame(() => { queued = false; if (drag) layoutDuringDrag(); else render(); });
 }
 
-export function render() {
-  if (!els.track || drag) return;
+export function render(reason) {
+  if (!els.track) return;
+  // Selection and thumbnails change how a chip looks, never where it sits, so
+  // patch the chips and leave the layout, the grid and the axis alone. That is
+  // also why a repaint is safe in the middle of a drag, when a re-layout is not.
+  if (isRepaint(reason)) { repaint(); return; }
+  if (drag) return;
   const W = els.track.clientWidth;
   if (!W) return;
   if (!view.start) fit();
@@ -159,6 +164,16 @@ export function render() {
 
   showEmpty(dated.length ? null : state.photos.length);
   drawAxis(W);
+}
+
+function repaint() {
+  const byId = new Map(state.photos.map((p) => [p.id, p]));
+  for (const [id, el] of chips.entries()) {
+    const p = byId.get(id);
+    if (!p) continue;
+    mark(el, p);
+    if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
+  }
 }
 
 /** The stand-in shown when nothing on the timeline has a date yet. */
@@ -448,11 +463,11 @@ function onPointerUp() {
     if (d.moved) {
       if (!d.additive) state.selection.clear();
       for (const id of d.hits ?? []) state.selection.add(id);
-      emit();
+      emit('selection');
     } else if (!d.additive && state.selection.size) {
       // A plain click on empty track clears the selection, as in any editor.
       state.selection.clear();
-      emit();
+      emit('selection');
     } else render();
     return;
   }

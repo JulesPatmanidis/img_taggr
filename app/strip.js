@@ -181,7 +181,7 @@ export function selectAll() {
     && state.selection.size === ids.length;
   state.selection.clear();
   if (!all) for (const id of ids) state.selection.add(id);
-  emit();
+  emit('selection');
 }
 
 function seedDates() {
