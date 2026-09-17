@@ -653,6 +653,9 @@ function showDrop(x, timeLabel, note) {
   }
   if (dropline.parentElement !== els.track) els.track.appendChild(dropline);
   dropline.style.left = `${x}px`;
+  // The dragged chip straddles the line, so the labels sit beside it, on
+  // whichever side has room.
+  dropline.classList.toggle('flip', x > els.track.clientWidth - 200);
   dropline.querySelector('.lab').textContent = timeLabel;
   const n = dropline.querySelector('.note');
   n.textContent = note || '';

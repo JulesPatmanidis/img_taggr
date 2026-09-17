@@ -34,7 +34,7 @@
   --danger:    #f7768e;
   /* Empty photo tiles, floating toolbars over the stage, alternate day bands. */
   --tile:      #212229;
-  --float:     rgba(23,24,27,.94);
+  --float:     #17181b;
   --band:      rgba(255,255,255,.022);
   --scrim:     rgba(16,17,20,.72);
   --scroll:    #2c2d34;
@@ -78,7 +78,7 @@
     --edited:    #9a6a06;
     --danger:    #c0392f;
     --tile:      #e5e0d8;
-    --float:     rgba(255,255,255,.95);
+    --float:     #ffffff;
     --band:      rgba(0,0,0,.028);
     --scrim:     rgba(244,242,238,.78);
     --scroll:    #d3cec5;
@@ -371,12 +371,12 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .overlay.bl { bottom: 16px; left: 16px; display: flex; gap: 8px; align-items: center; }
 .overlay.br { bottom: 16px; right: 16px; max-width: 42%; text-align: right; }
 .tools .btn, .tools .chk {
-  background: var(--float); backdrop-filter: blur(6px);
+  background: var(--float);
   border: 1px solid var(--line-2); border-radius: var(--radius);
 }
 .hint {
   display: inline-block; padding: 5px 10px; font-size: 11px; color: var(--muted);
-  background: var(--float); backdrop-filter: blur(6px);
+  background: var(--float);
   border: 1px solid var(--line); border-radius: var(--radius);
 }
 /* The banner over the map: quiet until a selection makes the next click mean
@@ -384,13 +384,15 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .banner {
   display: flex; align-items: center; gap: 8px;
   height: 40px; padding: 0 16px; font-size: 13px; color: var(--muted);
-  background: var(--float); backdrop-filter: blur(6px);
+  background: var(--float);
   border: 1px solid var(--line); border-radius: var(--radius);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* The tint is mixed into an opaque panel colour, not laid over the map: a
+   translucent accent over light tiles left white text sitting on beige. */
 .banner.on {
-  color: var(--text); background: var(--accent-dim); border-color: var(--accent-edge);
-  backdrop-filter: blur(6px) saturate(1.4);
+  color: var(--text); border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
 }
 .banner.on::before {
   content: ""; width: 7px; height: 7px; flex: 0 0 auto;
@@ -404,7 +406,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 }
 .introCard {
   width: 340px; padding: 22px; pointer-events: auto;
-  background: var(--float); backdrop-filter: blur(8px);
+  background: var(--float);
   border: 1px solid var(--line); border-radius: var(--radius);
 }
 .introCard .mark {
@@ -596,12 +598,18 @@ path.route, path.spiderLeg { stroke: var(--accent); }
    that will be written and what the move costs. */
 .dropline {
   position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px;
-  background: var(--accent); z-index: 8; pointer-events: none;
+  /* Above the chip being dragged, which is z-index 9 and sits on the line. */
+  background: var(--accent); z-index: 10; pointer-events: none;
 }
+/* Clear of the chip: half a chip plus a gap to the right of the line, or the
+   same distance to the left when the line is near the right-hand edge. */
 .dropline .lab, .dropline .note {
-  position: absolute; left: 50%; transform: translateX(-50%);
+  position: absolute; left: calc(var(--chip) / 2 + 8px);
   font-family: var(--mono); font-size: 10px; line-height: 1;
   padding: 3px 6px; border-radius: var(--radius); white-space: nowrap;
+}
+.dropline.flip .lab, .dropline.flip .note {
+  left: auto; right: calc(var(--chip) / 2 + 8px);
 }
 .dropline .lab {
   top: 4px; background: var(--accent); color: var(--on-accent); font-weight: 700;
