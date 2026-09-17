@@ -19,6 +19,7 @@ import {
   state, selected, applyEdit, emit, clickSelect, markClasses, mark, isRepaint,
   photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
 } from './state.js';
+import { parseShift } from './edits.js';
 import { replay, keyedList } from './dom.js';
 
 const DAY_MS = 86400000;
@@ -67,6 +68,8 @@ export function initTimeline(refs) {
   els.axis.addEventListener('pointerdown', onAxisDown);
   els.root.addEventListener('wheel', onWheel, { passive: false });
   els.hint(HINT);
+  initBatch();
+  els.spread.addEventListener('click', spreadSelection);
 }
 
 /* ── Framing ───────────────────────────────────────────────────── */
@@ -128,7 +131,7 @@ export function render(reason) {
   // Selection and thumbnails change how a chip looks, never where it sits, so
   // patch the chips and leave the layout, the grid and the axis alone. That is
   // also why a repaint is safe in the middle of a drag, when a re-layout is not.
-  if (isRepaint(reason)) { repaint(); return; }
+  if (isRepaint(reason)) { repaint(); syncSpread(); return; }
   if (drag) return;
   const W = els.track.clientWidth;
   if (!W) return;
@@ -164,6 +167,94 @@ export function render(reason) {
 
   showEmpty(dated.length ? null : state.photos.length);
   drawAxis(W);
+  drawHead(W);
+}
+
+/* ── Header ────────────────────────────────────────────────────── */
+
+/** The day in the middle of the view, so panning always names where you are. */
+function drawHead(W) {
+  const mid = view.start + (W / 2) * view.msPerPx;
+  const dated = state.photos.some((p) => p.datetime);
+  const day = msToDt(mid).slice(0, 10);
+  els.year.textContent = dated ? day.slice(0, 4) : '';
+  els.date.textContent = dated ? fmtDayLabel(day) : 'No date set yet';
+  syncSpread();
+}
+
+/** Spreading needs a first, a last and something to move between them. */
+function syncSpread() {
+  els.spread.disabled = selected().filter((p) => p.datetime).length < 3;
+}
+
+/* ── Spacing a selection out ───────────────────────────────────── */
+
+/**
+ * Put the selected photos at equal intervals between the first and the last,
+ * keeping both ends where they are. The common case is a burst dropped on one
+ * spot, or a roll dated by hand at both ends and left bunched in between.
+ */
+function spreadSelection() {
+  const list = selected().filter((p) => p.datetime)
+    .sort((a, b) => dtToMs(a.datetime) - dtToMs(b.datetime));
+  if (list.length < 3) return;
+  const lo = dtToMs(list[0].datetime);
+  const step = (dtToMs(list[list.length - 1].datetime) - lo) / (list.length - 1);
+  if (!step) return;
+  applyEdit(list, (ps) => {
+    ps.sort((a, b) => dtToMs(a.datetime) - dtToMs(b.datetime));
+    ps.forEach((p, i) => { p.datetime = msToDt(snap(lo + i * step)); });
+  });
+  els.toast(`Spread ${photoCount(list.length)} evenly, ${fmtDur(step / 1000)} apart`);
+}
+
+/* ── Dating a whole batch ──────────────────────────────────────── */
+
+/**
+ * Scanned film has no timestamps but keeps its shot order in the filename, so
+ * a start time and one interval is enough to date the whole roll. It is a
+ * starting point, not a claim: every photo can still be dragged afterwards.
+ */
+let batchTouched = false;
+
+function initBatch() {
+  els.batchApply.addEventListener('click', applyBatch);
+  for (const el of [els.batchStart, els.batchGap]) {
+    el.addEventListener('input', () => { batchTouched = true; });
+    el.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Enter') applyBatch();
+    });
+  }
+}
+
+/** Until someone types in it, the start follows the folder's own timestamps. */
+function seedBatch() {
+  if (batchTouched || !state.photos.length) return;
+  els.batchStart.value = `${seedDay(state.photos[0])} 09:00`;
+}
+
+/** "2026-09-07 09:00" or "…09:00:00" → the wall-clock ms, or null. */
+function parseStart(text) {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(:\d{2})?$/.exec(text.trim());
+  return m ? dtToMs(`${m[1]}T${m[2]}${m[3] ?? ':00'}`) : null;
+}
+
+function applyBatch() {
+  const start = parseStart(els.batchStart.value);
+  if (start === null) { els.toast('Start must look like 2026-09-07 09:00', true); return; }
+  const gap = parseShift(els.batchGap.value);
+  if (gap === null || gap <= 0) { els.toast('Gap must look like 5m, 30s or 1h15m', true); return; }
+
+  const undated = state.photos.filter((p) => !p.datetime)
+    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  if (!undated.length) return;
+  applyEdit(undated, (ps) => {
+    ps.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    ps.forEach((p, i) => { p.datetime = msToDt(start + i * gap * 1000); });
+  });
+  fit();
+  els.toast(`Dated ${photoCount(undated.length)} from ${els.batchStart.value.trim()}, ${fmtDur(gap)} apart`);
 }
 
 function repaint() {
@@ -176,14 +267,17 @@ function repaint() {
   }
 }
 
-/** The stand-in shown when nothing on the timeline has a date yet. */
+/** Nothing on the timeline has a date yet: offer to date the whole batch. */
 function showEmpty(n) {
+  els.batch.classList.toggle('hidden', n === null || !n);
+  if (n) {
+    seedBatch();
+    els.batchApply.textContent = `Apply to ${photoCount(n)}`;
+  }
   const msg = els.track.querySelector('.tlEmpty');
-  if (n === null) { msg?.remove(); return; }
+  if (n !== 0) { msg?.remove(); return; }
   const el = msg ?? Object.assign(document.createElement('div'), { className: 'tlEmpty' });
-  el.textContent = n
-    ? `None of these ${photoCount(n)} has a date yet. Drag them here from the list to date them.`
-    : 'Open a folder to see its photos along a timeline.';
+  el.textContent = 'Open a folder to see its photos along a timeline.';
   if (!msg) els.track.appendChild(el);
 }
 
@@ -238,7 +332,9 @@ function drawAxis(W) {
   const frag = document.createDocumentFragment();
   const end = view.start + W * view.msPerPx;
   const dayW = DAY_MS / view.msPerPx;
-  for (let d = dayStartMs(view.start); d < end; d += DAY_MS) {
+  // One day on screen is already named by the header; repeating it there is noise.
+  const oneDay = dayStartMs(view.start) + DAY_MS >= end;
+  for (let d = dayStartMs(view.start); d < end && !oneDay; d += DAY_MS) {
     if (dayW < 44) break;
     const lab = document.createElement('div');
     lab.className = 'tlDay';

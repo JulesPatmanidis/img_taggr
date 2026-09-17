@@ -13,7 +13,7 @@
 
 import {
   state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, mark,
-  isEdited, isRepaint,
+  isEdited, isRepaint, photoCount,
 } from './state.js';
 import { replay, keyedList } from './dom.js';
 
@@ -157,11 +157,12 @@ export function clearPlace() {
 export function invalidate() { if (map) map.invalidateSize(); }
 
 /** A pin: a thumbnail in a teardrop, anchored at its tip. */
-function pinIcon(cls, thumb, inner = '') {
+function pinIcon(cls, thumb, inner = '', label = '') {
   const img = thumb ? `background-image:url('${thumb}')` : '';
+  const lab = label ? ` data-label="${label}"` : '';
   return L.divIcon({
     className: '',
-    html: `<div class="${cls}" style="${img}">${inner}</div>`,
+    html: `<div class="${cls}" style="${img}"${lab}>${inner}</div>`,
     iconSize: [38, 47],
     iconAnchor: [19, 47],
   });
@@ -174,10 +175,16 @@ const icon = (p) => pinIcon(markClasses('pin', p), p.thumb);
 function clusterIcon(c) {
   const ids = new Set(c.getAllChildMarkers().map((m) => m.photoId));
   const photos = state.photos.filter((p) => ids.has(p.id));
+  const picked = photos.filter((p) => state.selection.has(p.id)).length;
   const cls = ['pin', 'cluster',
-    photos.some((p) => state.selection.has(p.id)) ? 'sel' : '',
+    picked ? 'sel' : '',
     photos.some(isEdited) ? 'edited' : ''].filter(Boolean).join(' ');
-  return pinIcon(cls, photos.find((p) => p.thumb)?.thumb, `<b>${ids.size}</b>`);
+  // A label rather than a corner badge: at a glance it says how many photos
+  // sit here and how many of them the selection has.
+  const label = picked && picked < ids.size ? `${ids.size} photos · ${picked} selected`
+    : picked ? `${photoCount(ids.size)} selected`
+      : photoCount(ids.size);
+  return pinIcon(cls, photos.find((p) => p.thumb)?.thumb, '', label);
 }
 
 /** Refresh a pin's look in place. Swapping the whole icon would replace the

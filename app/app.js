@@ -91,6 +91,7 @@ async function openFolder(pending) {
       return photo;
     }));
 
+    savedOnce = false;
     $('folderLabel').textContent = res.label.length > 44 ? `…${res.label.slice(-43)}` : res.label;
     $('folderLabel').title = res.label;
     Strip.build();
@@ -148,27 +149,75 @@ function setField(el, val, fmt = (v) => v) {
   }
 }
 
+/** Nothing selected: say what the folder still needs and offer a way in. */
+function renderIdle() {
+  const n = state.photos.length;
+  const done = state.photos.filter(isTagged).length;
+  const undated = state.photos.filter((p) => !p.datetime).length;
+  const unplaced = state.photos.filter((p) => p.lat == null).length;
+  $('statCount').textContent = String(n);
+  $('statBar').style.width = n ? `${(done / n) * 100}%` : '0%';
+  $('statLine').textContent = !n ? 'Open a folder to start.'
+    : `${done} tagged · ${n - done} still need a date or a location`;
+  $('cUndated').textContent = String(undated);
+  $('cUnplaced').textContent = String(unplaced);
+  $('btnPickUndated').disabled = !undated;
+  $('btnPickUnplaced').disabled = !unplaced;
+}
+
+/** The strip of what is selected, up to a row's worth. */
+function renderThumbs(sel) {
+  const box = $('insThumbs');
+  box.replaceChildren();
+  for (const p of sel.slice(0, 8)) {
+    const el = document.createElement('div');
+    el.className = 'insThumb';
+    if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
+    else el.dataset.ext = p.ext || '?';
+    el.title = `${p.name} — preview with Space`;
+    box.appendChild(el);
+  }
+  if (sel.length > 8) {
+    const more = document.createElement('div');
+    more.className = 'insThumb more';
+    more.textContent = `+${sel.length - 8}`;
+    box.appendChild(more);
+  }
+}
+
+/** "14:12–14:45" for a mixed selection, so the field says what it is hiding. */
+function timeRange(sel) {
+  const times = sel.filter((p) => p.datetime).map((p) => p.datetime.slice(11, 16)).sort();
+  if (times.length < 2 || times[0] === times[times.length - 1]) return '';
+  return `Mixed · ${times[0]}–${times[times.length - 1]}`;
+}
+
 function renderInspector(edited = editedPhotos().length) {
   const sel = selected();
   const has = sel.length > 0;
+  $('insIdle').classList.toggle('hidden', has);
+  $('insSel').classList.toggle('hidden', !has);
+  if (!has) renderIdle();
+
   for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
   $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
   $('btnShowMap').disabled = !sel.some((p) => p.lat != null);
   $('btnShowTime').disabled = !sel.some((p) => p.datetime);
+  $('gpsHelp').classList.toggle('hidden', !has || sel.some((p) => p.lat != null));
 
   $('selLabel').textContent = !has
     ? 'Nothing selected'
     : sel.length === 1 ? sel[0].name : `${sel.length} photos selected`;
-  const thumb = $('insThumb');
-  const shown = sel.find((p) => p.thumb) ?? sel[0];
-  thumb.style.backgroundImage = shown?.thumb ? `url('${shown.thumb}')` : '';
-  thumb.dataset.ext = shown && !shown.thumb ? (shown.ext || '?') : '';
-  thumb.dataset.count = sel.length > 1 ? String(sel.length) : '';
-  thumb.classList.toggle('hidden', !has);
+  $('selLabel').title = sel.length === 1 ? sel[0].name : '';
+  renderThumbs(sel);
 
   $('editLabel').classList.toggle('hidden', edited === 0);
   $('editLabel').textContent = `${edited} unsaved`;
+
+  const range = has ? timeRange(sel) : '';
+  $('dtRange').textContent = range;
+  $('dtRange').classList.toggle('hidden', !range);
 
   if (!has) {
     dtField.set(null);
@@ -342,6 +391,7 @@ $('btnConfirm').addEventListener('click', async () => {
     const okSet = new Set(ok.map((r) => r.path));
     for (const p of state.photos) if (okSet.has(p.path)) rebase(p);
     resetHistory();
+    savedOnce = true;
     $('modal').classList.add('hidden');
     emit('edits');
 
@@ -416,7 +466,16 @@ initLightbox({ loadPreview: (p) => backend.loadPreview(p) });
 hoverPreview($('stripList'), '.card .th', (el) => el.closest('.card').dataset.id);
 hoverPreview($('tlTrack'), '.chip', (el) => el.dataset.id);
 hoverPreview($('map'), '.leaflet-marker-icon', MapView.photoIdOf);
-$('insThumb').addEventListener('click', preview);
+$('insThumbs').addEventListener('click', preview);
+$('btnPickUndated').addEventListener('click', () => selectWhere((p) => !p.datetime));
+$('btnPickUnplaced').addEventListener('click', () => selectWhere((p) => p.lat == null));
+
+/** Select every photo the test accepts, as one step. */
+function selectWhere(test) {
+  state.selection.clear();
+  for (const p of state.photos) if (test(p)) state.selection.add(p.id);
+  emit('selection');
+}
 
 /* ── Keyboard ──────────────────────────────────────────────────── */
 window.addEventListener('keydown', (e) => {
@@ -453,8 +512,24 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ── Render loop ───────────────────────────────────────────────── */
+/** "Saved" only means something once something has actually been written. */
+let savedOnce = false;
+
+/** A photo is tagged when it has both halves of what this app exists to fix. */
+const isTagged = (p) => Boolean(p.datetime) && p.lat != null;
+
+function renderProgress(edited) {
+  const n = state.photos.length;
+  const done = state.photos.filter(isTagged).length;
+  $('progress').classList.toggle('hidden', n === 0);
+  $('progressText').textContent = `${done} of ${n} tagged`;
+  $('progressBar').style.width = n ? `${(done / n) * 100}%` : '0%';
+  $('savedPill').classList.toggle('hidden', !savedOnce || edited > 0 || n === 0);
+}
+
 function renderAll(reason) {
   const edited = editedPhotos().length;
+  renderProgress(edited);
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
   Strip.sync();
   renderInspector(edited);
@@ -468,9 +543,15 @@ function renderAll(reason) {
   for (const p of state.photos) if (p.lat != null && ++placed >= 2) break;
 
   MapView.setPlacing(sel.length > 0);
+  // The intro card and the banner say the same thing at different volumes, so
+  // only the card shows while the folder is still entirely unplaced.
+  const anyPlaced = placed > 0;
+  $('mapIntro').classList.toggle('hidden', !state.photos.length || anyPlaced || sel.length > 0);
   $('mapHint').textContent = !state.photos.length ? 'Search for a place, or open a folder of photos'
-    : sel.length ? `Click the map to place ${sel.length === 1 ? sel[0].name : `${sel.length} photos`}`
+    : sel.length ? `${sel.length === 1 ? sel[0].name : `${sel.length} photos`} selected — click the map or drag them here to place them`
       : 'Select photos, then click the map or drag them here';
+  $('mapHint').classList.toggle('on', sel.length > 0);
+  $('mapHint').classList.toggle('hidden', Boolean(state.photos.length) && !anyPlaced && !sel.length);
   $('btnInterp').disabled = placed < 2;
   $('btnUndo').disabled = state.undo.length === 0;
   $('btnRedo').disabled = state.redo.length === 0;
@@ -534,6 +615,14 @@ TL.initTimeline({
   root: $('tl'),
   axis: $('tlAxis'),
   track: $('tlTrack'),
+  year: $('tlYear'),
+  date: $('tlDate'),
+  spread: $('btnSpread'),
+  batch: $('batch'),
+  batchStart: $('fBatchStart'),
+  batchGap: $('fBatchGap'),
+  batchApply: $('btnBatch'),
+  toast,
   hint: (msg) => { $('timeHint').textContent = msg; },
   onReveal: (id) => reveal([id], { map: true }),
 });

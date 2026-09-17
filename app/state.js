@@ -48,6 +48,12 @@ export const isRepaint = (reason) => reason === 'selection' || reason === 'thumb
  */
 export function setPhotos(photos) {
   state.photos = photos;
+  // A shot number that never moves. Scanned film keeps its order in the
+  // filename, and the list re-sorts as dates are set, so the badge has to come
+  // from something fixed or it would renumber under the user's hands.
+  [...photos]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    .forEach((p, i) => { p.seq = i + 1; });
   state.selection.clear();
   resetHistory();
   sortPhotos();
@@ -135,13 +141,19 @@ export function clickSelect(id, { toggle = false, extend = false, anchor = null,
 }
 
 /** Capture order: undated first, as the to-do list, then by time, then name.
- *  The only ordering in the app: the backends hand photos over unsorted and
- *  this runs on load and whenever a datetime moves. */
-export function sortPhotos() {
+ *  Filename order is the other one worth having, because a scanned roll was
+ *  shot in that order. The backends hand photos over unsorted, so this runs on
+ *  load, whenever a datetime moves, and when the order itself is changed. */
+let sortMode = 'time';
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+
+export function sortPhotos(mode = sortMode) {
+  sortMode = mode;
+  if (mode === 'name') { state.photos.sort(byName); return; }
   state.photos.sort((a, b) =>
     (!!a.datetime - !!b.datetime)
     || (a.datetime && b.datetime ? dtToMs(a.datetime) - dtToMs(b.datetime) : 0)
-    || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    || byName(a, b));
 }
 
 /** The fields a user can edit. Everything that compares, snapshots, reverts or

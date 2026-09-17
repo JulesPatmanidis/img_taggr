@@ -1,66 +1,88 @@
 /* img-taggr — a minimal shell, dark or light to match the system.
-   One accent (blue) for selection, one (amber) for unsaved edits. Nothing else
-   is allowed to be colourful, so the photos stay the loudest thing on screen. */
+   Terracotta is the one accent and it always means "selected". Amber always
+   means "edited but not saved". Green and grey only ever say whether a photo
+   is finished. Nothing else is allowed to be colourful, so the photos stay the
+   loudest thing on screen.
+
+   Corners are 2px throughout: square enough to read as a tool, soft enough not
+   to look unfinished. */
 
 :root {
   color-scheme: dark;
-  --bg:        #0c0c0e;
-  --panel:     #131316;
-  --panel-2:   #1a1a1f;
-  --hover:     #22222a;
-  --line:      #26262d;
-  --line-2:    #34343d;
-  --line-3:    #43434e;
-  --text:      #e9e9ec;
-  --muted:     #85858f;
-  --accent:    #7aa2f7;
-  --accent-hover: #92b4f8;
-  --accent-dim:#2c3a5c;
-  --on-accent: #0b0f1a;
-  --edited:    #e0af68;
+  --bg:        #101114;
+  /* --panel is the top bar; --panel-2 the side panels; --field inputs. */
+  --panel:     #17181b;
+  --panel-2:   #141518;
+  --field:     #1c1d22;
+  --hover:     #22232a;
+  --line:      #2a2b31;
+  --line-2:    #34353c;
+  --line-3:    #4b4c54;
+  --text:      #f1f0ec;
+  --text-2:    #c6c7ce;
+  --muted:     #9a9ca6;
+  --muted-2:   #62636c;
+  --accent:    #9c5430;
+  --accent-hover: #b5673d;
+  --accent-dim: rgba(156,84,48,.20);
+  --accent-edge: rgba(156,84,48,.45);
+  /* White, not the mockup's near-black: 6.7:1 on terracotta instead of 2.9:1. */
+  --on-accent: #ffffff;
+  --ok:        #4ecb86;
+  --off:       #55565f;
+  --edited:    #f0b429;
   --danger:    #f7768e;
   /* Empty photo tiles, floating toolbars over the stage, alternate day bands. */
-  --tile:      #202027;
-  --float:     rgba(19,19,22,.94);
+  --tile:      #212229;
+  --float:     rgba(23,24,27,.94);
   --band:      rgba(255,255,255,.022);
-  --scrim:     rgba(12,12,14,.72);
-  --scroll:    #2c2c34;
-  --scroll-hover: #3a3a45;
-  --radius: 7px;
+  --scrim:     rgba(16,17,20,.72);
+  --scroll:    #2c2d34;
+  --scroll-hover: #3a3b45;
+  --radius: 2px;
   /* Set at runtime by the strip's drag handle; these are the defaults. */
-  --strip: 252px;
+  --strip: 300px;
   --split: 58%;
-  --inspector: 256px;
-  --thumb: 76px;
-  --chip: 50px;
-  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --inspector: 320px;
+  --thumb: 44px;
+  --chip: 34px;
+  --bar: 64px;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg:        #f3f3f5;
+    /* Warmed to sit under the same terracotta rather than fight it. */
+    --bg:        #f4f2ee;
     --panel:     #ffffff;
-    --panel-2:   #f0f0f3;
-    --hover:     #e7e7ec;
-    --line:      #e1e1e7;
-    --line-2:    #cfcfd7;
-    --line-3:    #b3b3be;
-    --text:      #1c1c21;
-    --muted:     #686873;
-    --accent:    #3a6ddf;
-    --accent-hover: #2d5dc9;
-    --accent-dim:#dbe5fb;
+    --panel-2:   #faf8f5;
+    --field:     #f1eee9;
+    --hover:     #eae6e0;
+    --line:      #e3dfd8;
+    --line-2:    #cfc9c0;
+    --line-3:    #aaa49a;
+    --text:      #1f1e1d;
+    --text-2:    #3d3b38;
+    --muted:     #6b6862;
+    --muted-2:   #8b877f;
+    --accent:    #9c5430;
+    --accent-hover: #7a4020;
+    --accent-dim: rgba(156,84,48,.14);
+    --accent-edge: rgba(156,84,48,.40);
     --on-accent: #ffffff;
-    --edited:    #b8761c;
-    --danger:    #d0344f;
-    --tile:      #e3e3e9;
+    --ok:        #1f8a4c;
+    --off:       #a29d94;
+    --edited:    #9a6a06;
+    --danger:    #c0392f;
+    --tile:      #e5e0d8;
     --float:     rgba(255,255,255,.95);
     --band:      rgba(0,0,0,.028);
-    --scrim:     rgba(243,243,245,.78);
-    --scroll:    #c9c9d1;
-    --scroll-hover: #b1b1bb;
+    --scrim:     rgba(244,242,238,.78);
+    --scroll:    #d3cec5;
+    --scroll-hover: #bcb6ab;
   }
 }
 
@@ -81,21 +103,49 @@ body {
 
 /* ── Top bar ──────────────────────────────────────────────────── */
 .bar {
-  display: flex; align-items: center; gap: 10px;
-  height: 46px; flex: 0 0 46px; padding: 0 12px;
+  display: flex; align-items: center; gap: 14px;
+  height: var(--bar); flex: 0 0 var(--bar); padding: 0 20px;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 7px; font-weight: 600; letter-spacing: .2px; }
-.brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.brand {
+  display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+  font-family: var(--display); font-weight: 600; font-size: 17px; letter-spacing: -.2px;
+}
+.brand .mark {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: var(--radius); color: var(--accent);
+  background: var(--accent-dim); border: 1px solid var(--accent-edge);
+}
+.barSep { width: 1px; height: 24px; background: var(--line); flex: 0 0 auto; }
+.barGroup { display: flex; gap: 2px; flex: 0 0 auto; }
 .folder {
-  font-family: var(--mono); font-size: 11px;
-  max-width: 330px; overflow: hidden; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-family: var(--mono); font-size: 12px; max-width: 260px;
+}
+.folder svg { flex: 0 0 auto; color: var(--muted-2); }
+.folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Nothing open yet: the icon would be pointing at nothing. */
+.folder:has(span:empty) { display: none; }
+
+/* How much of the folder is done, and whether it has been written out. */
+.progress { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.progress span { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.progress .meter {
+  width: 120px; height: 6px; border-radius: var(--radius);
+  background: var(--field); overflow: hidden;
+}
+.progress .meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.savedPill {
+  display: flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  height: 30px; padding: 0 10px; border-radius: var(--radius);
+  font-size: 12px; font-weight: 500; color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */
 .btn {
   font: inherit; color: var(--text);
-  background: var(--panel-2); border: 1px solid var(--line-2);
+  background: var(--field); border: 1px solid var(--line-2);
   padding: 5px 11px; border-radius: var(--radius); cursor: pointer;
   transition: background .12s, border-color .12s, opacity .12s;
 }
@@ -103,6 +153,17 @@ body {
 .btn:disabled { opacity: .38; cursor: default; }
 .btn.sm { padding: 4px 9px; font-size: 12px; }
 .btn.icon { width: 30px; padding: 5px 0; font-weight: 600; }
+/* Top-bar buttons are taller and the outlined ones sit on the bar itself. */
+.bar .btn { height: 34px; display: flex; align-items: center; gap: 7px; background: none; }
+.bar .btn.primary { background: var(--accent); padding: 0 16px; }
+.bar .btn.icon { width: 30px; height: 30px; justify-content: center; border-color: var(--line-2); }
+.iconBtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border: none; border-radius: var(--radius);
+  background: none; color: var(--muted); cursor: pointer;
+}
+.iconBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.iconBtn:disabled { color: var(--line-3); cursor: default; }
 
 /* Keyboard users see where they are; mouse users are not shown rings. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -110,6 +171,10 @@ body {
 .lightbox:focus-visible, .calGrid:focus-visible { outline: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+/* Nothing to save: an outline, not a faded button that still looks clickable. */
+.btn.primary:disabled {
+  background: none; color: var(--muted-2); border-color: var(--line-2); opacity: 1;
+}
 .link {
   background: none; border: none; color: var(--accent);
   font: inherit; font-size: 11px; cursor: pointer; padding: 0;
@@ -122,40 +187,111 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 
 .strip {
   width: var(--strip); flex: 0 0 var(--strip);
-  background: var(--panel);
+  background: var(--panel-2);
   display: flex; flex-direction: column; min-height: 0;
 }
 .stripHead {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 11px;
+  padding: 16px 16px 12px;
 }
-.stripList { flex: 1; overflow-y: auto; padding: 6px; }
-.filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 8px 0; }
+#stripCount { font-family: var(--display); font-weight: 600; font-size: 15px; }
+.stripHead .link { font-size: 13px; font-weight: 500; }
+
+/* Narrowing the list: a filename box and the sort menu. */
+.stripFind { display: flex; gap: 8px; padding: 0 16px 12px; }
+.find {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 10px; color: var(--muted-2);
+  background: var(--field); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.find:focus-within { border-color: var(--accent); }
+.find input {
+  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
+  color: var(--text); background: none; border: none; outline: none;
+}
+.find input::-webkit-search-cancel-button { display: none; }
+.iconBtn.boxed {
+  width: 32px; height: 32px; flex: 0 0 auto;
+  background: var(--field); border: 1px solid var(--line);
+}
+.menuWrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 900;
+  min-width: 150px; padding: 4px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.menu button {
+  display: flex; align-items: center; gap: 7px;
+  font: inherit; font-size: 12.5px; color: var(--text); text-align: left;
+  background: none; border: none; border-radius: var(--radius);
+  padding: 6px 8px; cursor: pointer;
+}
+.menu button::before {
+  content: ""; width: 12px; height: 12px; flex: 0 0 auto;
+  background: currentColor; opacity: 0;
+  clip-path: polygon(14% 52%, 38% 76%, 88% 22%, 96% 32%, 38% 92%, 5% 60%);
+}
+.menu button[aria-checked="true"]::before { opacity: 1; color: var(--accent); }
+.menu button:hover { background: var(--hover); }
+
+.stripList { flex: 1; overflow-y: auto; padding: 2px 10px 12px; }
+.filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 14px; }
 .filter {
-  font: inherit; font-size: 11px; color: var(--muted); cursor: pointer;
-  background: none; border: 1px solid var(--line-2); border-radius: 20px; padding: 2px 8px;
+  display: flex; align-items: center; gap: 5px;
+  font: inherit; font-size: 12px; color: var(--text-2); cursor: pointer;
+  height: 26px; padding: 0 10px;
+  background: none; border: 1px solid var(--line); border-radius: var(--radius);
 }
-.filter b { font-weight: 600; color: var(--text); margin-left: 2px; }
-.filter:hover:not(:disabled) { border-color: var(--line-3); }
-.filter.on { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+.filter b { font-weight: 600; color: var(--muted); }
+.filter:hover:not(:disabled) { border-color: var(--line-2); }
+.filter.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.filter.on b { color: var(--on-accent); }
+.filter.on .dot { display: none; }
 .filter:disabled { opacity: .45; cursor: default; }
-.seedRow { padding: 6px 10px 0; }
 .stripEmpty { padding: 14px; font-size: 12px; text-align: center; }
 
-.card {
-  display: flex; gap: 8px; align-items: center;
-  padding: 5px; margin-bottom: 3px;
-  border: 1px solid transparent; border-radius: var(--radius);
-  cursor: pointer;
+/* Green means finished; grey means something is still missing. The word next
+   to the dot always says which, so the colour only has to carry "done or not". */
+.dot {
+  width: 6px; height: 6px; flex: 0 0 auto; border-radius: 999px; background: var(--off);
 }
-.card:hover { background: var(--panel-2); }
-.card.sel { background: var(--accent-dim); border-color: var(--accent); }
+.dot.ok { background: var(--ok); }
+
+.card {
+  position: relative;
+  display: flex; gap: 10px; align-items: center;
+  padding: 8px; margin-bottom: 3px;
+  border-radius: var(--radius); cursor: pointer;
+}
+.card:hover { background: var(--hover); }
+.card.sel { background: var(--accent-dim); }
+/* A bar on the edge rather than a border, so the row does not shift by a pixel. */
+.card.sel::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: var(--radius); background: var(--accent);
+}
 /* The list scrolls, so an outside ring would be clipped at its edges. */
 .card:focus-visible { outline-offset: -2px; }
+.card .check {
+  display: flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: 0 0 auto;
+  border: 1.5px solid var(--line-3); border-radius: var(--radius);
+}
+.card .check svg { width: 12px; height: 12px; fill: none; stroke: var(--on-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.card.sel .check { background: var(--accent); border-color: var(--accent); }
+.card.sel .check svg { opacity: 1; }
 .card .th {
   position: relative;
   width: var(--thumb); height: var(--thumb); flex: 0 0 var(--thumb);
-  border-radius: 5px; background: var(--tile) center/cover no-repeat;
+  border-radius: var(--radius); background: var(--tile) center/cover no-repeat;
+}
+/* The shot number, fixed at load time, so a roll can be read off the list. */
+.card .idx {
+  position: absolute; left: 3px; bottom: 3px; z-index: 1;
+  padding: 1px 4px; border-radius: var(--radius);
+  font-family: var(--mono); font-size: 9px; color: #f1f0ec;
+  background: rgba(0,0,0,.55);
 }
 /* Browsers cannot decode every format we can edit (Chrome has no HEIC or TIFF
    decoder). Name the format so an empty tile reads as a missing preview rather
@@ -179,31 +315,26 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 .resizer:hover, .resizer.on { background: var(--accent); }
 .resizer.h { flex: 0 0 5px; cursor: row-resize; }
 .card .meta { min-width: 0; flex: 1; }
-.card .nm { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.card .nm { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .status { display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+.card .status .word { font-size: 11.5px; color: var(--muted); }
 .card.edited .nm::after {
   content: ""; display: inline-block; width: 5px; height: 5px;
   border-radius: 50%; background: var(--edited); margin-left: 5px; vertical-align: middle;
 }
-.flags { display: flex; gap: 6px; margin-top: 3px; }
-.flag { display: flex; color: var(--text); }
-.flag svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linecap: round; }
-.flag .x { display: none; }
-.flag.off { color: var(--muted); opacity: .7; }
-.flag.off .x { display: inline; stroke: var(--edited); }
 
 /* A card being dragged out of the strip. */
 body.dragging, body.dragging * { cursor: grabbing !important; }
 .dragGhost {
   position: fixed; left: 0; top: 0; z-index: 2400; pointer-events: none;
-  width: 46px; height: 46px; border-radius: 6px; opacity: .9;
+  width: 46px; height: 46px; border-radius: var(--radius); opacity: .9;
   background: var(--tile) center/cover no-repeat; border: 2px solid var(--muted);
   box-shadow: 0 6px 18px rgba(0,0,0,.5);
 }
 .dragGhost.ok { border-color: var(--accent); }
 .dragGhost[data-count]::after {
   content: attr(data-count); position: absolute; right: -8px; top: -8px;
-  min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
+  min-width: 18px; padding: 1px 5px; border-radius: 999px; text-align: center;
   font-size: 10px; font-weight: 700; background: var(--accent); color: var(--on-accent);
 }
 
@@ -228,10 +359,17 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 /* ── Overlays shared by both views ────────────────────────────── */
 .overlay { position: absolute; z-index: 500; pointer-events: none; }
 .overlay > * { pointer-events: auto; }
-.overlay.tl { top: 10px; left: 10px; right: 56px; }
-.overlay.tr { top: 10px; right: 10px; }
-.overlay.bl { bottom: 10px; left: 10px; display: flex; gap: 6px; align-items: center; }
-.overlay.br { bottom: 10px; right: 10px; max-width: 42%; text-align: right; }
+.overlay.tl { top: 16px; left: 16px; }
+.overlay.tr { top: 16px; right: 16px; }
+/* Centred in the room the search box and the expand button leave, so the two
+   never overlap however narrow the pane gets. */
+.overlay.tc {
+  top: 16px; left: 322px; right: 68px;
+  display: flex; justify-content: center; min-width: 0;
+}
+.overlay.tc > * { min-width: 0; }
+.overlay.bl { bottom: 16px; left: 16px; display: flex; gap: 8px; align-items: center; }
+.overlay.br { bottom: 16px; right: 16px; max-width: 42%; text-align: right; }
 .tools .btn, .tools .chk {
   background: var(--float); backdrop-filter: blur(6px);
   border: 1px solid var(--line-2); border-radius: var(--radius);
@@ -241,6 +379,41 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   background: var(--float); backdrop-filter: blur(6px);
   border: 1px solid var(--line); border-radius: var(--radius);
 }
+/* The banner over the map: quiet until a selection makes the next click mean
+   something, then it is the loudest thing that is not a photo. */
+.banner {
+  display: flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 16px; font-size: 13px; color: var(--muted);
+  background: var(--float); backdrop-filter: blur(6px);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.banner.on {
+  color: var(--text); background: var(--accent-dim); border-color: var(--accent-edge);
+  backdrop-filter: blur(6px) saturate(1.4);
+}
+.banner.on::before {
+  content: ""; width: 7px; height: 7px; flex: 0 0 auto;
+  border-radius: 999px; background: var(--accent);
+}
+
+/* Nothing placed yet: the map is empty, so say what it is for. */
+.mapIntro {
+  position: absolute; inset: 0; z-index: 480;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.introCard {
+  width: 340px; padding: 22px; pointer-events: auto;
+  background: var(--float); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: var(--radius);
+}
+.introCard .mark {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; margin-bottom: 14px; border-radius: var(--radius);
+  color: var(--accent); background: var(--accent-dim); border: 1px solid var(--accent-edge);
+}
+.introCard h3 { margin: 0 0 8px; font-family: var(--display); font-weight: 600; font-size: 16px; }
+.introCard p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.55; }
 /* Segmented control: a pair of mutually exclusive buttons. */
 .seg {
   display: flex; padding: 2px; gap: 2px;
@@ -248,7 +421,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 }
 .seg button {
   font: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
-  background: none; border: none; border-radius: 5px; padding: 3px 9px;
+  background: none; border: none; border-radius: var(--radius); padding: 3px 9px;
 }
 .seg button:hover { color: var(--text); }
 .seg button[aria-checked="true"] { background: var(--accent-dim); color: var(--text); }
@@ -270,7 +443,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius);
   box-shadow: 0 10px 28px rgba(0,0,0,.45);
 }
-.searchResults li { padding: 6px 8px; border-radius: 5px; }
+.searchResults li { padding: 6px 8px; border-radius: var(--radius); }
 .searchResults [role="option"] { cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
 .searchResults [role="option"] b { font-weight: 600; color: var(--text); font-size: 12px; }
 .searchResults [role="option"] span { font-size: 11px; color: var(--muted); }
@@ -298,7 +471,14 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 #map[data-basemap="satellite"] { background: #1b1f1d; }
 .leaflet-control-attribution { background: var(--float) !important; color: var(--muted) !important; font-size: 10px !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
-.leaflet-bar a { background: var(--panel-2) !important; color: var(--text) !important; border-color: var(--line-2) !important; }
+.leaflet-bar { border: 1px solid var(--line) !important; border-radius: var(--radius) !important; box-shadow: none !important; }
+.leaflet-bar a {
+  width: 32px !important; height: 32px !important; line-height: 32px !important;
+  background: var(--float) !important; color: var(--text-2) !important;
+  border-color: var(--line) !important; border-radius: 0 !important;
+}
+.leaflet-bar a:hover { background: var(--hover) !important; color: var(--text) !important; }
+.leaflet-control-zoom { margin: 0 16px 16px 0 !important; }
 
 /* Map lines follow the theme; the SVG stroke attribute loses to CSS. */
 path.route, path.spiderLeg { stroke: var(--accent); }
@@ -318,27 +498,49 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 .pin.sel::after { border-top-color: var(--accent); }
 .pin.edited { border-color: var(--edited); }
 .pin.edited::after { border-top-color: var(--edited); }
-.pin.cluster b {
-  position: absolute; right: -9px; top: -7px;
-  min-width: 20px; padding: 1px 5px; border-radius: 10px; text-align: center;
-  font-size: 11px; font-weight: 700; line-height: 16px;
-  background: #fff; color: #111; box-shadow: 0 1px 4px rgba(0,0,0,.45);
+/* A cluster says how many photos are under it, and how many are selected. */
+.pin.cluster[data-label]::before {
+  content: attr(data-label);
+  position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
+  padding: 4px 9px; border-radius: var(--radius); white-space: nowrap;
+  font-size: 11.5px; font-weight: 500; color: var(--text-2);
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
 }
-.pin.cluster.sel b { background: var(--accent); color: var(--on-accent); }
+.pin.cluster.sel[data-label]::before { color: var(--text); border-color: var(--accent); }
 /* A stack of photos, drawn as a second card peeking out behind the first. */
 .pin.cluster { box-shadow: 4px -4px 0 -1px #fff, 4px -4px 0 1px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.55); }
 
 /* ── Timeline ─────────────────────────────────────────────────── */
-#timeView { display: flex; flex-direction: column; background: var(--bg); }
+#timeView { display: flex; flex-direction: column; background: var(--panel-2); }
+
+/* The header names the day in the middle of the view, so panning always says
+   where you are without reading the ruler. */
+.tlHead {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; padding: 12px 16px 6px; flex: 0 0 auto;
+}
+.tlYear { font-size: 10.5px; color: var(--muted-2); letter-spacing: .03em; min-height: 14px; }
+.tlDate { font-family: var(--display); font-weight: 600; font-size: 13.5px; margin-top: 1px; }
+.tlHeadBtns { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.btn.accent {
+  color: var(--accent); background: var(--accent-dim); border-color: var(--accent-edge); font-weight: 500;
+}
+.btn.accent:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.tlFoot {
+  display: flex; align-items: center; gap: 12px; padding: 8px 16px 12px; flex: 0 0 auto;
+}
+.tlFoot .hint { margin-left: auto; text-align: right; }
+
 .tl { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .tlAxis {
-  position: relative; flex: 0 0 36px; overflow: hidden; cursor: grab;
-  background: var(--panel); border-bottom: 1px solid var(--line);
+  position: relative; flex: 0 0 28px; overflow: hidden; cursor: grab;
+  border-bottom: 1px solid var(--line);
 }
 .tlAxis.panning { cursor: grabbing; }
 .tlDay {
-  position: absolute; top: 3px; font-size: 11px; font-weight: 600; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  position: absolute; top: 2px; font-size: 10.5px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: none; color: var(--muted);
 }
 .tlTime {
   position: absolute; bottom: 3px; transform: translateX(-50%); pointer-events: none;
@@ -360,10 +562,29 @@ path.route, path.spiderLeg { stroke: var(--accent); }
   padding: 0 24px 30px; text-align: center; color: var(--muted); font-size: 12px; pointer-events: none;
 }
 
+/* ── Dating a whole batch ─────────────────────────────────────── */
+/* Shown over the track while nothing has a date: dragging thirty undated
+   scans into place one by one is not a workflow. */
+/* While it is up there is nothing on the track to rule, so the axis goes too. */
+#timeView:has(.batch:not(.hidden)) .tlAxis { visibility: hidden; }
+.batch {
+  position: absolute; left: 16px; right: 16px; top: 46px; bottom: 44px; z-index: 20;
+  display: flex; align-items: center; gap: 28px; padding: 0 24px;
+  background: var(--panel-2); border: 1px dashed var(--line); border-radius: var(--radius);
+}
+.batchWhy { max-width: 240px; }
+.batchWhy h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+.batchWhy p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+.batchSep { width: 1px; height: 64px; background: var(--line); flex: 0 0 auto; }
+.batchFields { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.batchFields .fld { width: 170px; }
+.batchFields .fld.narrow { width: 120px; }
+.batchFields .btn { height: 36px; }
+
 .chip {
   position: absolute; top: 6px;
   width: var(--chip); height: var(--chip); transform: translateX(-50%);
-  border-radius: 5px; border: 2px solid var(--line-2);
+  border-radius: var(--radius); border: 2px solid var(--line-2);
   background: var(--tile) center/cover no-repeat;
   cursor: grab; touch-action: none;
   box-shadow: 0 2px 5px rgba(0,0,0,.5);
@@ -380,13 +601,13 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 .dropline .lab, .dropline .note {
   position: absolute; left: 50%; transform: translateX(-50%);
   font-family: var(--mono); font-size: 10px; line-height: 1;
-  padding: 3px 6px; border-radius: 4px; white-space: nowrap;
+  padding: 3px 6px; border-radius: var(--radius); white-space: nowrap;
 }
 .dropline .lab {
   top: 4px; background: var(--accent); color: var(--on-accent); font-weight: 700;
 }
 .dropline .note {
-  bottom: 8px; background: var(--panel-2); color: var(--text);
+  bottom: 8px; background: var(--panel); color: var(--text);
   border: 1px solid var(--line-2);
 }
 
@@ -410,50 +631,99 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 .inspector.collapsed .insBody { display: none; }
 .insToggle {
   position: absolute; top: 8px; right: 6px; z-index: 1;
-  display: flex; padding: 4px; border: none; border-radius: 5px;
+  display: flex; padding: 4px; border: none; border-radius: var(--radius);
   background: none; color: var(--muted); cursor: pointer;
 }
-.insToggle:hover { color: var(--text); background: var(--panel-2); }
+.insToggle:hover { color: var(--text); background: var(--hover); }
 .inspector.collapsed .insToggle { right: 4px; transform: rotate(180deg); }
-.insBody { padding: 12px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
-.insHead { display: flex; gap: 10px; align-items: center; padding-right: 22px; min-height: 48px; }
+.insBody { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.insHead { display: flex; gap: 8px; align-items: center; padding-right: 22px; }
+.selLabel {
+  font-family: var(--display); font-weight: 600; font-size: 16px;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.insIdle, .insSel { display: flex; flex-direction: column; gap: 16px; }
+
+/* Nothing selected: the folder's own numbers, then a way into the work. */
+.statCard {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; border-radius: var(--radius);
+  background: var(--field); border: 1px solid var(--line);
+}
+.statTop { display: flex; align-items: baseline; gap: 8px; }
+.statTop b { font-family: var(--mono); font-size: 22px; font-weight: 500; }
+.statTop span { font-size: 11.5px; color: var(--muted-2); }
+.statCard .meter { height: 6px; border-radius: var(--radius); background: var(--bg); overflow: hidden; }
+.statCard .meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.statLine { font-size: 11.5px; color: var(--muted-2); }
+.insSecHead {
+  margin: 8px 0 -6px; font-size: 11.5px; font-weight: 600;
+  letter-spacing: .06em; color: var(--muted-2); text-transform: uppercase;
+}
+.pickBtn {
+  display: flex; align-items: center; justify-content: space-between;
+  height: 42px; padding: 0 12px; font: inherit; font-size: 13px; text-align: left;
+  color: var(--text); background: none; border: 1px solid var(--line);
+  border-radius: var(--radius); cursor: pointer;
+}
+.pickBtn:hover:not(:disabled) { background: var(--hover); border-color: var(--line-2); }
+.pickBtn:disabled { opacity: .4; cursor: default; }
+.pickBtn span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.tipCard {
+  padding: 14px; border-radius: var(--radius);
+  background: var(--accent-dim); border: 1px solid var(--accent-edge);
+}
+.tipCard b { display: block; margin-bottom: 5px; font-size: 12.5px; }
+.tipCard p { margin: 0; font-size: 12px; color: var(--text-2); line-height: 1.55; }
+
+/* Something selected: what it is, then the two fields worth fixing. */
+.insThumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .insThumb {
-  position: relative; flex: 0 0 48px; height: 48px; border-radius: 6px; padding: 0; cursor: zoom-in;
-  background: var(--panel-2) center/cover no-repeat; border: 1px solid var(--line);
+  position: relative; width: 60px; height: 60px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius); cursor: zoom-in;
+  background: var(--tile) center/cover no-repeat; border: 2px solid var(--accent);
+}
+.insThumb.more {
+  border-style: dashed; border-color: var(--line-2); cursor: default;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
 }
 .insThumb[data-ext]:not([data-ext=""])::after {
   content: attr(data-ext); position: absolute; inset: 0; display: flex;
   align-items: center; justify-content: center;
   font-size: 9px; color: var(--muted); text-transform: uppercase;
 }
-.insThumb[data-count]:not([data-count=""])::before {
-  content: attr(data-count); position: absolute; right: -6px; bottom: -6px;
-  min-width: 18px; padding: 1px 5px; border-radius: 9px; text-align: center;
-  font-size: 10px; font-weight: 600; background: var(--accent); color: var(--on-accent);
-}
-.insName { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.selLabel { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.insShow { display: flex; gap: 6px; flex-wrap: wrap; }
-.insSec { display: flex; flex-direction: column; gap: 9px; }
+.insShow { display: flex; gap: 8px; }
+.insShow .btn { flex: 1; justify-content: center; height: 34px; }
+.insSec { display: flex; flex-direction: column; gap: 10px; }
 .insSec h3 {
-  margin: 0; padding-bottom: 5px; border-bottom: 1px solid var(--line);
-  font-size: 11px; font-weight: 600; color: var(--text);
+  margin: 8px 0 -2px; font-size: 11.5px; font-weight: 600;
+  letter-spacing: .06em; color: var(--muted-2); text-transform: uppercase;
 }
 .insSec > .btn { align-self: flex-start; }
-.help { margin: -4px 0 0; font-size: 11px; line-height: 1.35; color: var(--muted); }
-.insFoot { border-top: 1px solid var(--line); padding-top: 12px; }
+.fldRow { display: flex; gap: 10px; }
+.fldRow .fld { flex: 1 1 0; min-width: 0; }
+.help { margin: -4px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted-2); }
+.insFoot { margin-top: auto; padding-top: 12px; }
+.insFoot .btn { width: 100%; height: 36px; }
 .pill {
-  font-size: 10px; padding: 1px 7px; border-radius: 20px;
+  font-size: 10px; padding: 1px 7px; border-radius: 999px;
   color: var(--edited);
   background: color-mix(in srgb, var(--edited) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--edited) 32%, transparent);
 }
-.fld { display: flex; flex-direction: column; gap: 3px; }
-.fld > span, .fld > label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.fld { display: flex; flex-direction: column; gap: 6px; }
+.fld > span, .fld > label { font-size: 11.5px; color: var(--muted); }
 .fld input {
-  font: inherit; font-family: var(--mono); font-size: 12px;
-  color: var(--text); background: var(--panel-2);
-  border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 7px; width: 100%;
+  font: inherit; font-family: var(--mono); font-size: 12.5px; height: 38px;
+  color: var(--text); background: var(--field);
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 0 12px; width: 100%;
+}
+/* An empty coordinate is an outline, not a box: nothing is stored there yet.
+   Only the coordinates, because "multiple" in the date field means the values
+   differ, not that they are missing. */
+#fLat:placeholder-shown, #fLon:placeholder-shown {
+  background: none; border-style: dashed; border-color: var(--line-2);
 }
 .fld input:focus { outline: none; border-color: var(--accent); }
 .fld input:disabled { opacity: .4; }
@@ -465,7 +735,7 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 .fld .dt input { padding-right: 26px; }
 .calBtn {
   position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
-  display: flex; padding: 3px; border: none; border-radius: 4px;
+  display: flex; padding: 3px; border: none; border-radius: var(--radius);
   background: none; color: var(--muted); cursor: pointer;
 }
 .calBtn:hover:not(:disabled), .calBtn[aria-expanded="true"] { color: var(--text); background: var(--line-2); }
@@ -473,25 +743,25 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 
 .cal {
   position: fixed; z-index: 2600; width: 232px; padding: 10px;
-  background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--radius);
   box-shadow: 0 12px 34px rgba(0,0,0,.55);
 }
 .calHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .calTitle { font-size: 12px; font-weight: 600; }
 .calNav {
   font: inherit; font-size: 15px; line-height: 1; color: var(--text);
-  background: none; border: none; border-radius: 5px; padding: 3px 8px; cursor: pointer;
+  background: none; border: none; border-radius: var(--radius); padding: 3px 8px; cursor: pointer;
 }
-.calNav:hover { background: var(--panel-2); }
+.calNav:hover { background: var(--hover); }
 .calWeek, .calGrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .calWeek span { font-size: 10px; color: var(--muted); text-align: center; padding: 2px 0; }
 .calGrid { outline: none; }
 .calDay {
   font: inherit; font-size: 12px; font-family: var(--mono); color: var(--text);
-  background: none; border: 1px solid transparent; border-radius: 5px;
+  background: none; border: 1px solid transparent; border-radius: var(--radius);
   padding: 4px 0; cursor: pointer;
 }
-.calDay:hover { background: var(--panel-2); }
+.calDay:hover { background: var(--hover); }
 .calDay.out { color: var(--muted); opacity: .6; }
 .calDay.on { background: var(--accent-dim); }
 .calGrid:focus .calDay.focus { border-color: var(--accent); }
@@ -503,12 +773,12 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 }
 .modal {
   width: 470px; background: var(--panel); border: 1px solid var(--line-2);
-  border-radius: 11px; padding: 20px; box-shadow: 0 18px 50px rgba(0,0,0,.6);
+  border-radius: var(--radius); padding: 20px; box-shadow: 0 18px 50px rgba(0,0,0,.6);
 }
 .modal.sm { width: 380px; }
 .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
 .btn.danger:hover { filter: brightness(1.08); }
-.modal h2 { margin: 0 0 5px; font-size: 15px; }
+.modal h2 { margin: 0 0 5px; font-family: var(--display); font-weight: 600; font-size: 16px; }
 .modal p { margin: 0 0 14px; font-size: 12px; }
 .radios { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
 .radio {
@@ -536,7 +806,7 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 }
 .dropZone div {
   padding: 28px 44px; font-size: 15px; font-weight: 600;
-  border: 2px dashed var(--accent); border-radius: 12px; background: var(--panel);
+  border: 2px dashed var(--accent); border-radius: var(--radius); background: var(--panel);
 }
 
 /* ── Toast ────────────────────────────────────────────────────── */
@@ -544,13 +814,13 @@ path.route, path.spiderLeg { stroke: var(--accent); }
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   z-index: 3000; max-width: 60ch;
   padding: 8px 14px; font-size: 12px;
-  background: var(--panel-2); border: 1px solid var(--line-2);
+  background: var(--panel); border: 1px solid var(--line-2);
   border-radius: var(--radius); box-shadow: 0 6px 20px rgba(0,0,0,.5);
 }
 .toast.err { border-color: var(--danger); color: var(--danger); }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 5px; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: var(--radius); }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); }
 ::-webkit-scrollbar-track { background: transparent; }
 
@@ -564,11 +834,11 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 /* ── Hover preview ────────────────────────────────────────────── */
 .peek {
   position: fixed; left: 0; top: 0; z-index: 2800; pointer-events: none;
-  width: 280px; padding: 6px; border-radius: 9px;
+  width: 280px; padding: 6px; border-radius: var(--radius);
   background: var(--panel); border: 1px solid var(--line-2); box-shadow: 0 12px 34px rgba(0,0,0,.55);
 }
 .peekImg {
-  position: relative; height: 210px; border-radius: 5px;
+  position: relative; height: 210px; border-radius: var(--radius);
   background: var(--tile) center/contain no-repeat;
 }
 .peekImg:not([data-ext=""])::after {
@@ -587,7 +857,7 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 }
 .lbFig { margin: 0; flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; gap: 10px; }
 .lbStage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
-.lbStage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 4px; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+.lbStage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius); box-shadow: 0 10px 40px rgba(0,0,0,.6); }
 .lbStage img.loading { filter: blur(6px); }
 .lbMsg { color: var(--muted); font-size: 13px; }
 .lightbox figcaption { display: flex; align-items: baseline; gap: 12px; justify-content: center; flex-wrap: wrap; color: #e9e9ec; }
@@ -612,10 +882,10 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 /* The map draws on its own layer and bleeds a hairline past the cover. */
 main:has(.welcome:not(.hidden)) #stage { visibility: hidden; }
 .welcomeCard {
-  max-width: 520px; padding: 32px 34px; border-radius: 14px;
+  max-width: 520px; padding: 32px 34px; border-radius: var(--radius);
   background: var(--panel); border: 1px solid var(--line); box-shadow: 0 16px 50px rgba(0,0,0,.25);
 }
-.welcomeCard h1 { margin: 0 0 16px; font-size: 21px; line-height: 1.25; letter-spacing: -.2px; }
+.welcomeCard h1 { margin: 0 0 16px; font-family: var(--display); font-weight: 600; font-size: 22px; line-height: 1.25; letter-spacing: -.3px; }
 .welcomeCard ol { margin: 0 0 22px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .welcomeCard .btn.primary { padding: 9px 20px; font-size: 14px; }
 .welcomeCard p { margin: 18px 0 0; font-size: 12px; }
@@ -629,7 +899,7 @@ main:has(.welcome:not(.hidden)) #stage { visibility: hidden; }
 kbd {
   display: inline-block; min-width: 18px; padding: 0 5px; text-align: center;
   font: 11px/17px var(--mono); color: var(--text);
-  background: var(--panel-2); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px;
+  background: var(--field); border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: var(--radius);
 }
 
 /* ── Too small ────────────────────────────────────────────────── */
