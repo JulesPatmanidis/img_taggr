@@ -1,19 +1,23 @@
 /* img-taggr — a minimal shell, dark or light to match the system.
-   Terracotta is the one accent and it always means "selected". Amber always
-   means "edited but not saved". Green and grey only ever say whether a photo
-   is finished. Nothing else is allowed to be colourful, so the photos stay the
+   Indigo is the one accent and it always means "selected". Amber always means
+   "edited but not saved". Green and grey only ever say whether a photo is
+   finished. Nothing else is allowed to be colourful, so the photos stay the
    loudest thing on screen.
+
+   The accent is deeper than a typical UI blue on purpose: it carries white
+   label text on filled buttons, and it has to stay far from both the amber and
+   the green it shares a screen with.
 
    Corners are 2px throughout: square enough to read as a tool, soft enough not
    to look unfinished. */
 
 :root {
   color-scheme: dark;
-  --bg:        #101114;
+  --bg:        #0f1013;
   /* --panel is the top bar; --panel-2 the side panels; --field inputs. */
-  --panel:     #17181b;
-  --panel-2:   #141518;
-  --field:     #1c1d22;
+  --panel:     #16171b;
+  --panel-2:   #131418;
+  --field:     #1b1c22;
   --hover:     #22232a;
   --line:      #2a2b31;
   --line-2:    #34353c;
@@ -22,11 +26,11 @@
   --text-2:    #c6c7ce;
   --muted:     #9a9ca6;
   --muted-2:   #62636c;
-  --accent:    #9c5430;
-  --accent-hover: #b5673d;
-  --accent-dim: rgba(156,84,48,.20);
-  --accent-edge: rgba(156,84,48,.45);
-  /* White, not the mockup's near-black: 6.7:1 on terracotta instead of 2.9:1. */
+  --accent:    #3f5fbf;
+  --accent-hover: #5170ce;
+  --accent-dim: rgba(63,95,191,.22);
+  --accent-edge: rgba(63,95,191,.50);
+  /* White, not the mockup's near-black: 5.9:1 instead of 2.6:1. */
   --on-accent: #ffffff;
   --ok:        #4ecb86;
   --off:       #55565f;
@@ -34,9 +38,9 @@
   --danger:    #f7768e;
   /* Empty photo tiles, floating toolbars over the stage, alternate day bands. */
   --tile:      #212229;
-  --float:     #17181b;
+  --float:     #16171b;
   --band:      rgba(255,255,255,.022);
-  --scrim:     rgba(16,17,20,.72);
+  --scrim:     rgba(15,16,19,.72);
   --scroll:    #2c2d34;
   --scroll-hover: #3a3b45;
   --radius: 2px;
@@ -55,34 +59,34 @@
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    /* Warmed to sit under the same terracotta rather than fight it. */
-    --bg:        #f4f2ee;
+    /* A hair cool, to sit under the same indigo rather than fight it. */
+    --bg:        #f1f2f5;
     --panel:     #ffffff;
-    --panel-2:   #faf8f5;
-    --field:     #f1eee9;
-    --hover:     #eae6e0;
-    --line:      #e3dfd8;
-    --line-2:    #cfc9c0;
-    --line-3:    #aaa49a;
-    --text:      #1f1e1d;
-    --text-2:    #3d3b38;
-    --muted:     #6b6862;
-    --muted-2:   #8b877f;
-    --accent:    #9c5430;
-    --accent-hover: #7a4020;
-    --accent-dim: rgba(156,84,48,.14);
-    --accent-edge: rgba(156,84,48,.40);
+    --panel-2:   #f7f8fa;
+    --field:     #edeef2;
+    --hover:     #e4e6ec;
+    --line:      #dfe1e7;
+    --line-2:    #c7cad3;
+    --line-3:    #a4a8b3;
+    --text:      #1c1d21;
+    --text-2:    #393b42;
+    --muted:     #64666f;
+    --muted-2:   #868994;
+    --accent:    #35509f;
+    --accent-hover: #2a4185;
+    --accent-dim: rgba(53,80,159,.14);
+    --accent-edge: rgba(53,80,159,.42);
     --on-accent: #ffffff;
     --ok:        #1f8a4c;
-    --off:       #a29d94;
+    --off:       #9ea1ab;
     --edited:    #9a6a06;
     --danger:    #c0392f;
-    --tile:      #e5e0d8;
+    --tile:      #e1e3e9;
     --float:     #ffffff;
     --band:      rgba(0,0,0,.028);
-    --scrim:     rgba(244,242,238,.78);
-    --scroll:    #d3cec5;
-    --scroll-hover: #bcb6ab;
+    --scrim:     rgba(241,242,245,.78);
+    --scroll:    #ced1d9;
+    --scroll-hover: #b3b7c1;
   }
 }
 
@@ -496,7 +500,10 @@ path.route, path.spiderLeg { stroke: var(--accent); }
   transform: translateX(-50%);
   border: 5px solid transparent; border-top-color: var(--muted);
 }
-.pin.sel { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(122,162,247,.3), 0 2px 6px rgba(0,0,0,.55); z-index: 400; }
+.pin.sel {
+  border-color: var(--accent); z-index: 400;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 6px rgba(0,0,0,.55);
+}
 .pin.sel::after { border-top-color: var(--accent); }
 .pin.edited { border-color: var(--edited); }
 .pin.edited::after { border-top-color: var(--edited); }
@@ -835,8 +842,8 @@ button.insThumb:hover { border-color: var(--accent-hover); }
 
 /* Pulse on reveal, so a pin or chip that just scrolled into view is found. */
 @keyframes pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(122,162,247,.85); }
-  100% { box-shadow: 0 0 0 16px rgba(122,162,247,0); }
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 85%, transparent); }
+  100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 .pin.pulse, .chip.pulse { animation: pulse .7s ease-out 2; }
 
