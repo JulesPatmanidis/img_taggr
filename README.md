@@ -1,36 +1,13 @@
 # img-taggr
 
-Edit photo **time, date and location** metadata through two linked views, side
-by side: a **map** and a **timeline**.
+Edit photo **time, date and location** metadata through a **map** and a **timeline** view.
 
 Runs two ways from one codebase, as a website with no server or as a desktop
-app. Neither one uploads your photos. It reaches the network for map tiles
-(OpenStreetMap, and Esri for satellite imagery) and for place search (Photon
-gets the search text, the interface language and where the map is looking, so
-nearby places rank first). It sends nothing about your photos.
+app.
 
-## Why
+<img src="imgs/placed.png" width="820" alt="img-taggr with photos placed on the map and dated on the timeline">
 
-Existing tools each miss something. GeoSetter is Windows-only and unmaintained.
-digiKam buries the editor inside a full photo manager. Lightroom's Map module
-needs a subscription. The browser-based ones (Pic2Map, Jimpl, GeoImgr) upload
-your photos to their servers. None of them let you *drag a photo along a day*
-to fix its time.
-
-## The photo list and the two views
-
-The list on the left is where photos come from. It sorts by capture time,
-undated photos first (the sort menu switches to filename order, which is the
-order a scanned roll was shot in). The **Ready** / **No date** / **No location**
-chips show what is still to do. Each row carries its shot number, so you can
-read a roll straight off the list, and one line saying what that photo still
-needs. The box above filters by filename. Drag photos from the list onto the map
-or the timeline. Hover any photo for a larger preview, or press **Space** for a
-full-size one.
-
-The map sits above the timeline so a photo's place and time are on screen
-together. Press **M** or **T** to give either one the whole stage. Double-click
-a photo to find it in the other view.
+## Features 
 
 **Map.** Photos with coordinates appear as pins, joined by a dashed route in
 time order. Nearby pins merge into a numbered cluster, and photos sitting on
@@ -51,49 +28,42 @@ the very same spot fan out when you click them.
 marked. Scroll to pan, Ctrl+scroll (or pinch) to zoom, **Fit all** to see
 everything.
 
-- Drag a photo to set its time, across midnight if need be. A guide line shows
-  the exact landing time before you drop.
-- With several photos selected, **they all shift by the same amount**, so the
-  intervals between shots stay as they were. That repairs the usual problem, a
-  camera clock set wrong for a whole trip. Hold **Alt** to move one photo out of
+- Drag a photo to set its time.
+- With several photos selected **they all shift by the same amount**, so the
+  intervals between shots stay as they were. Hold **Alt** to move one photo out of
   formation.
 - Drag across empty track to select the photos inside a box.
-- Drop undated photos from the list to date them. **Date this batch** does the
-  rest in one step: it takes a start time and one interval and dates everything
-  still undated in filename order, or takes the file timestamps instead, both
-  to be corrected from there. It fills the timeline while nothing is dated at
-  all, and waits behind a header button once there are photos on the track.
+- Drop undated photos from the list to date them. 
 - **Distribute evenly** spaces the selected photos at equal intervals between
   the first and the last, which untangles a burst dropped on one spot.
-- Shots that would overlap step down one row each, earliest on top, so a burst
-  reads as a staircase.
+- Shots that would overlap step down one row each, earliest on top.
+
+A folder of scans opens with nothing dated and nothing placed. **Date this
+batch** takes a start time and one interval and dates the whole roll in filename
+order, which is the order it was shot in.
+
+<img src="imgs/first-run.png" width="820" alt="A freshly opened folder, nothing dated or placed yet">
 
 ## Editing model
 
-Wall-clock time and UTC offset are **separate fields**. "The clock was 3h47m
-slow" and "I was in another timezone" are different repairs and must not be
-conflated, so shifting the time never rewrites the offset.
+Wall-clock time and UTC offset are **separate fields**.
 
 The inspector on the right edits the selection in place. Date and time are one
-`YYYY-MM-DD HH:MM:SS` field you can drive from the keyboard. On a mixed
-selection, changing only the date leaves each photo its own time. **Shift by**
-takes `+3h47m`, `-15s` or `-0:15` and moves every selected photo by that much.
+`YYYY-MM-DD HH:MM:SS` field. On a mixed selection, changing only the date leaves
+each photo its own time. **Shift by** takes `+3h47m`, `-15s` or `-0:15` and moves 
+every selected photo.
 
 The app stages every change in memory and writes nothing until you press
-**Save**. Amber dots show what is still pending. Ctrl+Z walks back 50 steps, and opening
-another folder or closing the app asks before throwing unsaved edits away.
+**Save**. Amber dots show what is still pending.
 
 Tags written: `DateTimeOriginal`, `CreateDate`, `ModifyDate`, `OffsetTime*`, and
 `GPSLatitude`/`GPSLongitude` with their hemisphere refs.
 
-## Two targets, one engine
+## Architecture
 
-Both targets run the same metadata code: `engine/` is a plain Rust crate that
+Both targets (desktop and web) run the same metadata code: `engine/` is a plain Rust crate that
 reads and writes in memory. The browser build wraps it in wasm-bindgen, and the
-desktop build calls it directly and adds the filesystem work a browser cannot
-do. There is no second implementation, so the two cannot disagree about
-what "save" means. Running a 100-file corpus through both paths gave
-byte-identical results.
+desktop build calls it directly.
 
 The map, timeline and inspector never learn which backend they are driving.
 `app/backend.js` exposes one interface with two implementations, and each
@@ -101,30 +71,15 @@ advertises what it can do so the UI hides controls that cannot work.
 
 | | Web | Desktop |
 |---|---|---|
-| Engine | `img-taggr-core` (213KB gzipped as wasm) | `img-taggr-core`, linked in |
+| Engine | `img-taggr-core` | `img-taggr-core` |
 | Source | folder you pick in the browser | any folder on disk |
 | Writes | new files, or a ZIP download | copies, in-place, or in-place + backups |
 | JPEG · PNG · TIFF · WebP (lossless) · HEIC | yes | yes |
-| Lossy WebP | no, see below | no |
-| Runtime dependencies | none | none |
 
-**HEIC is edited in place, never transcoded.** The other browser-based tools
-convert HEIC to JPEG on save and hand back a re-encoded file. This one rewrites
-the original container, so a 3MB iPhone HEIC grows by about 132 bytes and the
-image payload stays byte-identical.
-
-**Content decides the format, not the filename.** Photo exports often contain
-JPEGs named `.png`. Writing those as PNG fails outright, so the magic bytes
-decide and the extension is only a fallback.
-
-**Lossy WebP cannot be written.** `little_exif` cannot turn a simple-format VP8
-chunk into the extended form that carries EXIF, so img-taggr rejects those files
-rather than mangling them. ExifTool handles that one format and this does not
-(see *Why not ExifTool* below).
-
-**HEIC and TIFF have no thumbnails**, since neither the browser nor the `image`
-crate can decode them. Those photos show a labelled placeholder. Safari decodes
-HEIC on its own in the web build.
+## Limitations 
+- Lossy WebP and RAW formats are not supported.
+- HEIC and TIFF have no thumbnails, since neither the browser nor the `image`
+crate can decode them. Safari decodes HEIC on its own in the web build.
 
 ## Running
 
@@ -134,17 +89,11 @@ HEIC on its own in the web build.
 npm run web          # builds the wasm, serves app/ on http://localhost:8080
 ```
 
-Open the `localhost` URL, not `0.0.0.0`. Only `localhost` and `127.0.0.1` count
-as secure origins, and without one the browser hides the File System Access API,
-so Chrome and Edge fall back to ZIP downloads instead of saving to a folder.
-
-To deploy, build the wasm and publish `app/` as static files (no server-side
-code, so GitHub Pages works).
+To deploy, build the wasm and publish `app/` as static files.
 
 Open a folder with the button or by dropping it onto the window. Chrome and Edge
 can save straight back to a folder via the File System Access API. Other
-browsers download a ZIP instead (the app detects this and relabels the save
-dialog accordingly).
+browsers download a ZIP instead.
 
 ### Desktop
 
@@ -168,29 +117,9 @@ npm test             # frontend: state, undo journal, edit logic
 cargo test           # engine: metadata reading and output paths
 ```
 
-The frontend tests run on Node's own runner, with no dependencies and no build
+The frontend tests run on Node, with no dependencies and no build
 step. They cover the modules that never touch the DOM (`state.js` and
-`edits.js`), so keeping logic out of `app.js` is what keeps it testable.
-
-## Why not ExifTool
-
-ExifTool is the reference implementation and handles far more than this does.
-It was the original desktop backend, dropped for two reasons.
-
-It cannot go in the browser at a sensible size. ExifTool is Perl, and while Perl
-*has* been compiled to WebAssembly ([zeroperl](https://github.com/6over3/zeroperl),
-wrapped by [@uswriting/exiftool](https://www.npmjs.com/package/@uswriting/exiftool)),
-the runtime is **7.3MB gzipped** against this engine's 213KB, 35× the size of
-the entire app, for a page whose appeal is that it loads fast.
-
-Keeping it on the desktop only would mean two implementations of the same edit,
-and they had already drifted: the ExifTool path wrote `GPSAltitude` where the
-wasm path had no altitude support at all, despite a comment asserting the two
-were identical.
-
-Against a 100-file corpus of real photos, that costs lossy WebP writing and
-nothing else. ExifTool pulled no usable thumbnail out of any of 40 iPhone HEICs,
-so dropping it lost no previews either.
+`edits.js`).
 
 ### Building the wasm from scratch
 
@@ -243,7 +172,3 @@ desktop/src/
   paths.rs              output paths + collision handling (unit-tested)
   lib.rs                Tauri commands
 ```
-
-img-taggr leaves camera RAW alone on purpose. Rewriting a RAW container is far
-easier to get wrong, and a metadata editor that corrupts someone's negative
-without saying so has failed at the only job it had.
