@@ -17,7 +17,7 @@
 
 import {
   state, selected, applyEdit, emit, clickSelect, markClasses, mark, isRepaint,
-  photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay, normDt,
+  photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay, normDt, isUndated,
 } from './state.js';
 import { parseShift } from './edits.js';
 import { dateTimeField, calendar } from './datetime.js';
@@ -166,7 +166,7 @@ export function render(reason) {
   }
   chips.sync(dated);
 
-  showEmpty(dated.length ? null : state.photos.length);
+  showEmpty(!state.photos.length);
   showBatch(dated.length);
   drawAxis(W);
   drawHead(W);
@@ -227,7 +227,7 @@ let batchField = null;
 /** The committed start, as a wall-clock stamp. */
 let batchStart = null;
 
-const undatedPhotos = () => state.photos.filter((p) => !p.datetime)
+const undatedPhotos = () => state.photos.filter(isUndated)
   .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
 
 function initBatch() {
@@ -322,7 +322,7 @@ function repaint() {
  * under it, it waits behind a header button so it cannot hide them.
  */
 function showBatch(nDated) {
-  const undated = state.photos.filter((p) => !p.datetime).length;
+  const undated = state.photos.filter(isUndated).length;
   const takeover = Boolean(state.photos.length) && !nDated;
   const show = undated > 0 && (takeover || batchOpen);
   if (!undated) batchOpen = false;
@@ -339,13 +339,13 @@ function showBatch(nDated) {
   els.batchWhy.textContent = takeover
     ? 'Most scans have no timestamp. Set a start time and the gap between shots to date them all at once, in filename order, then fine-tune by dragging.'
     : `${photoCount(undated)} still have no date. Set a start time and the gap between shots to place them in filename order, then fine-tune by dragging.`;
-  els.batchSeed.disabled = !state.photos.some((p) => !p.datetime && p.file_modified);
+  els.batchSeed.disabled = !state.photos.some((p) => isUndated(p) && p.file_modified);
 }
 
 /** The stand-in shown when there is no folder at all. */
-function showEmpty(n) {
+function showEmpty(noFolder) {
   const msg = els.track.querySelector('.tlEmpty');
-  if (n !== 0) { msg?.remove(); return; }
+  if (!noFolder) { msg?.remove(); return; }
   const el = msg ?? Object.assign(document.createElement('div'), { className: 'tlEmpty' });
   el.textContent = 'Open a folder to see its photos along a timeline.';
   if (!msg) els.track.appendChild(el);
@@ -668,7 +668,7 @@ function planDrop(x, ids, grabbed) {
     target,
     delta: anchor == null ? 0 : target - anchor,
     dated,
-    undated: photos.filter((p) => !p.datetime),
+    undated: photos.filter(isUndated),
   };
 }
 

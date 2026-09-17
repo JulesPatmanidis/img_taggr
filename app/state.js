@@ -40,6 +40,10 @@ export const emit = (reason) => onChange(reason);
  *  its nodes instead of laying them out again. */
 export const isRepaint = (reason) => reason === 'selection' || reason === 'thumbs';
 
+/** Natural filename order: the tie-break for capture order and the order the
+ *  shot numbers are handed out in, so both agree on what "first" means. */
+const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+
 /**
  * Replace the photo list and open a new session, returning its token. Bundled
  * because the selection, the journal and the ordering all belong to the list
@@ -51,9 +55,7 @@ export function setPhotos(photos) {
   // A shot number that never moves. Scanned film keeps its order in the
   // filename, and the list re-sorts as dates are set, so the badge has to come
   // from something fixed or it would renumber under the user's hands.
-  [...photos]
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-    .forEach((p, i) => { p.seq = i + 1; });
+  [...photos].sort(byName).forEach((p, i) => { p.seq = i + 1; });
   state.selection.clear();
   resetHistory();
   sortPhotos();
@@ -145,15 +147,40 @@ export function clickSelect(id, { toggle = false, extend = false, anchor = null,
  *  shot in that order. The backends hand photos over unsorted, so this runs on
  *  load, whenever a datetime moves, and when the order itself is changed. */
 let sortMode = 'time';
-const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+export const sortModeName = () => sortMode;
 
-export function sortPhotos(mode = sortMode) {
-  sortMode = mode;
-  if (mode === 'name') { state.photos.sort(byName); return; }
+/** The one call that changes the order, so the mode has a single owner. */
+export function setSortMode(mode) {
+  sortMode = mode === 'name' ? 'name' : 'time';
+  sortPhotos();
+}
+
+export function sortPhotos() {
+  if (sortMode === 'name') { state.photos.sort(byName); return; }
   state.photos.sort((a, b) =>
     (!!a.datetime - !!b.datetime)
     || (a.datetime && b.datetime ? dtToMs(a.datetime) - dtToMs(b.datetime) : 0)
     || byName(a, b));
+}
+
+/** What a photo is still missing. Every view asks these questions, so they are
+ *  answered once here rather than re-spelled as inline tests in each caller. */
+export const isUndated = (p) => !p.datetime;
+export const isUnplaced = (p) => p.lat == null;
+export const isTagged = (p) => !isUndated(p) && !isUnplaced(p);
+
+/** How much of the folder is finished. The top bar and the inspector both
+ *  report this and must not disagree. */
+export function folderStats() {
+  const total = state.photos.length;
+  const done = state.photos.filter(isTagged).length;
+  return {
+    total,
+    done,
+    undated: state.photos.filter(isUndated).length,
+    unplaced: state.photos.filter(isUnplaced).length,
+    percent: total ? (done / total) * 100 : 0,
+  };
 }
 
 /** The fields a user can edit. Everything that compares, snapshots, reverts or

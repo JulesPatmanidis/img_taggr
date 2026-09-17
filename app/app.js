@@ -3,6 +3,7 @@
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
   roundCoord, dayOf, photoCount, fmtDur, dtToMs, msToDt,
+  isUndated, isUnplaced, folderStats,
   EDITABLE, rebase, revertToBaseline, resetHistory, setPhotos,
 } from './state.js';
 import * as MapView from './map.js';
@@ -150,15 +151,12 @@ function setField(el, val, fmt = (v) => v) {
 }
 
 /** Nothing selected: say what the folder still needs and offer a way in. */
-function renderIdle() {
-  const n = state.photos.length;
-  const done = state.photos.filter(isTagged).length;
-  const undated = state.photos.filter((p) => !p.datetime).length;
-  const unplaced = state.photos.filter((p) => p.lat == null).length;
-  $('statCount').textContent = String(n);
-  $('statBar').style.width = n ? `${(done / n) * 100}%` : '0%';
-  $('statLine').textContent = !n ? 'Open a folder to start.'
-    : `${done} tagged · ${n - done} still need a date or a location`;
+function renderIdle(stats) {
+  const { total, done, undated, unplaced, percent } = stats;
+  $('statCount').textContent = String(total);
+  $('statBar').style.width = `${percent}%`;
+  $('statLine').textContent = !total ? 'Open a folder to start.'
+    : `${done} tagged · ${total - done} still need a date or a location`;
   $('cUndated').textContent = String(undated);
   $('cUnplaced').textContent = String(unplaced);
   $('btnPickUndated').disabled = !undated;
@@ -207,13 +205,13 @@ function timeRange(sel) {
     : `Mixed · ${lo.slice(0, 16).replace('T', ' ')} – ${hi.slice(0, 16).replace('T', ' ')}`;
 }
 
-function renderInspector(edited = editedPhotos().length) {
+function renderInspector(edited = editedPhotos().length, stats = folderStats()) {
   const sel = selected();
   const has = sel.length > 0;
   $('insIdle').classList.toggle('hidden', has);
   $('insSel').classList.toggle('hidden', !has);
   $('insBody').classList.toggle('idle', !has);
-  if (!has) renderIdle();
+  if (!has) renderIdle(stats);
 
   for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
@@ -304,7 +302,7 @@ $('fShift').addEventListener('keydown', (e) => {
   const sec = parseShift(e.target.value);
   if (sec === null) { toast('Shift must look like +3h47m, -15s or -0:15', true); return; }
   if (!sec) return;
-  const undated = selected().filter((p) => !p.datetime).length;
+  const undated = selected().filter(isUndated).length;
   const n = TL.shiftSelection(sec);
   if (!n) { toast('None of the selected photos has a date to shift', true); return; }
   e.target.value = '';
@@ -393,7 +391,7 @@ $('btnConfirm').addEventListener('click', async () => {
     // save would silently drop edits written in an earlier save.
     ...Object.fromEntries(EDITABLE.map((k) => [k, p[k]])),
     // Distinguish "remove the location" from "there was never one".
-    clear_gps: p.lat == null && p.orig.lat != null,
+    clear_gps: isUnplaced(p) && p.orig.lat != null,
   }));
 
   $('btnConfirm').disabled = true;
@@ -486,8 +484,8 @@ $('insThumbs').addEventListener('click', (ev) => {
   const el = ev.target.closest('.insThumb[data-id]');
   if (el) preview(el.dataset.id);
 });
-$('btnPickUndated').addEventListener('click', () => selectWhere((p) => !p.datetime));
-$('btnPickUnplaced').addEventListener('click', () => selectWhere((p) => p.lat == null));
+$('btnPickUndated').addEventListener('click', () => selectWhere(isUndated));
+$('btnPickUnplaced').addEventListener('click', () => selectWhere(isUnplaced));
 
 /** Select every photo the test accepts, as one step. */
 function selectWhere(test) {
@@ -534,24 +532,21 @@ window.addEventListener('keydown', (e) => {
 /** "Saved" only means something once something has actually been written. */
 let savedOnce = false;
 
-/** A photo is tagged when it has both halves of what this app exists to fix. */
-const isTagged = (p) => Boolean(p.datetime) && p.lat != null;
-
-function renderProgress(edited) {
-  const n = state.photos.length;
-  const done = state.photos.filter(isTagged).length;
-  $('progress').classList.toggle('hidden', n === 0);
-  $('progressText').textContent = `${done} of ${n} tagged`;
-  $('progressBar').style.width = n ? `${(done / n) * 100}%` : '0%';
-  $('savedPill').classList.toggle('hidden', !savedOnce || edited > 0 || n === 0);
+function renderProgress(edited, { total, done, percent }) {
+  $('progress').classList.toggle('hidden', total === 0);
+  $('progressText').textContent = `${done} of ${total} tagged`;
+  $('progressBar').style.width = `${percent}%`;
+  $('savedPill').classList.toggle('hidden', !savedOnce || edited > 0 || total === 0);
 }
 
 function renderAll(reason) {
   const edited = editedPhotos().length;
-  renderProgress(edited);
+  // One pass over the photos; the top bar and the inspector both read it.
+  const stats = folderStats();
+  renderProgress(edited, stats);
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
   Strip.sync();
-  renderInspector(edited);
+  renderInspector(edited, stats);
   // A hidden pane is redrawn when it comes back, through toggleMax. The reason
   // rides along so a view can patch itself instead of laying out again.
   if (Stage.mapShown()) MapView.render(reason);
@@ -564,13 +559,15 @@ function renderAll(reason) {
   MapView.setPlacing(sel.length > 0);
   // The intro card and the banner say the same thing at different volumes, so
   // only the card shows while the folder is still entirely unplaced.
-  const anyPlaced = placed > 0;
-  $('mapIntro').classList.toggle('hidden', !state.photos.length || anyPlaced || sel.length > 0);
+  // The card and the banner say the same thing at different volumes, so
+  // exactly one of them is up at a time.
+  const introUp = Boolean(state.photos.length) && placed === 0 && !sel.length;
+  $('mapIntro').classList.toggle('hidden', !introUp);
+  $('mapHint').classList.toggle('hidden', introUp);
   $('mapHint').textContent = !state.photos.length ? 'Search for a place, or open a folder of photos'
     : sel.length ? `${sel.length === 1 ? sel[0].name : `${sel.length} photos`} selected — click the map or drag them here to place them`
       : 'Select photos, then click the map or drag them here';
   $('mapHint').classList.toggle('on', sel.length > 0);
-  $('mapHint').classList.toggle('hidden', Boolean(state.photos.length) && !anyPlaced && !sel.length);
   $('btnInterp').disabled = placed < 2;
   $('btnUndo').disabled = state.undo.length === 0;
   $('btnRedo').disabled = state.redo.length === 0;

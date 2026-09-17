@@ -11,7 +11,8 @@
  */
 
 import {
-  state, emit, isEdited, clickSelect, photoCount, sortPhotos,
+  state, emit, isEdited, clickSelect, photoCount,
+  isUndated, isUnplaced, isTagged, setSortMode, sortModeName,
 } from './state.js';
 import { stored, store, dragHandle, keyedList } from './dom.js';
 
@@ -22,9 +23,9 @@ const ICON_CHECK =
 
 const FILTERS = {
   all: () => true,
-  ready: (p) => Boolean(p.datetime) && p.lat != null,
-  undated: (p) => !p.datetime,
-  unplaced: (p) => p.lat == null,
+  ready: isTagged,
+  undated: isUndated,
+  unplaced: isUnplaced,
 };
 let filter = 'all';
 /** Typed into the filename box; narrows the list on top of the filter. */
@@ -43,9 +44,9 @@ const visible = () => state.photos.filter(matches);
 
 /** The one line under a filename: what this photo is still missing. */
 function statusOf(p) {
-  if (p.datetime && p.lat != null) return { word: 'Ready', ok: true };
-  if (!p.datetime && p.lat == null) return { word: 'No date · no location' };
-  return { word: p.datetime ? 'Needs location' : 'No date' };
+  if (isTagged(p)) return { word: 'Ready', ok: true };
+  if (isUndated(p) && isUnplaced(p)) return { word: 'No date · no location', ok: false };
+  return { word: isUnplaced(p) ? 'Needs location' : 'No date', ok: false };
 }
 
 export function initStrip(options) {
@@ -105,13 +106,12 @@ function paintCard(el, p, { show, tabStop }) {
   }
   const st = statusOf(p);
   el.querySelector('.word').textContent = st.word;
-  el.querySelector('.dot').classList.toggle('ok', Boolean(st.ok));
+  el.querySelector('.dot').classList.toggle('ok', st.ok);
   el.title = p.datetime ? `${p.name} · ${p.datetime.slice(0, 16).replace('T', ' ')}` : p.name;
 }
 
 export function sync() {
   const shownIds = visible().map((p) => p.id);
-  const q = query;
   const tabStop = shownIds.includes(cursor) ? cursor
     : shownIds.find((id) => state.selection.has(id)) ?? shownIds[0];
   // Every photo keeps a card; the filter only hides them, so the list stays in
@@ -130,11 +130,12 @@ export function sync() {
   const shown = shownIds.length;
   $('stripCount').textContent = !n ? 'No photos'
     : state.selection.size ? `${state.selection.size} selected`
-      : filter === 'all' && !q ? photoCount(n) : `${shown} of ${n}`;
+      : filter === 'all' && !query ? photoCount(n) : `${shown} of ${n}`;
   $('btnSelectAll').disabled = !shown;
   $('stripSearch').disabled = !n;
   $('stripEmpty').classList.toggle('hidden', !n || shown > 0);
-  $('stripEmpty').textContent = q ? `No filename matches “${q}”.` : 'Nothing left here.';
+  $('stripEmpty').textContent = query
+    ? `No filename matches “${query}”.` : 'Nothing left here.';
 }
 
 /* ── Narrowing the list ────────────────────────────────────────── */
@@ -195,14 +196,14 @@ function initSort() {
     if (!ev.target.closest('.menuWrap')) open(false, { focus: false });
   });
   // Boot: the other views are not up yet, so restore the order without a render.
-  setSort(stored('sort') === 'name' ? 'name' : 'time', { quiet: true });
+  setSort(stored('sort'), { quiet: true });
 }
 
 function setSort(mode, { quiet = false } = {}) {
-  store('sort', mode);
-  sortPhotos(mode);
+  setSortMode(mode);
+  store('sort', sortModeName());
   for (const b of $('sortMenu').querySelectorAll('[data-sort]')) {
-    b.setAttribute('aria-checked', String(b.dataset.sort === mode));
+    b.setAttribute('aria-checked', String(b.dataset.sort === sortModeName()));
   }
   lastClicked = null;
   if (!quiet) emit('photos');
@@ -328,7 +329,7 @@ function ghostFor(ids, grabbed) {
 /* ── Sizing ────────────────────────────────────────────────────── */
 /* One drag handle instead of a size menu: "too small" depends on the screen,
    and the thumbnails scale with the panel so widening it actually shows more. */
-const MIN_STRIP = 240;
+const MIN_STRIP = 180;
 const MAX_STRIP = 460;
 
 function setStripWidth(px) {

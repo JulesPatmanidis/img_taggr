@@ -13,7 +13,7 @@
 
 import {
   state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, mark,
-  isEdited, isRepaint, photoCount,
+  isEdited, isRepaint, photoCount, isUnplaced,
 } from './state.js';
 import { replay, keyedList } from './dom.js';
 
@@ -157,12 +157,12 @@ export function clearPlace() {
 export function invalidate() { if (map) map.invalidateSize(); }
 
 /** A pin: a thumbnail in a teardrop, anchored at its tip. */
-function pinIcon(cls, thumb, inner = '', label = '') {
+function pinIcon(cls, thumb, label = '') {
   const img = thumb ? `background-image:url('${thumb}')` : '';
   const lab = label ? ` data-label="${label}"` : '';
   return L.divIcon({
     className: '',
-    html: `<div class="${cls}" style="${img}"${lab}>${inner}</div>`,
+    html: `<div class="${cls}" style="${img}"${lab}></div>`,
     iconSize: [38, 47],
     iconAnchor: [19, 47],
   });
@@ -184,7 +184,7 @@ function clusterIcon(c) {
   const label = picked && picked < ids.size ? `${ids.size} photos · ${picked} selected`
     : picked ? `${photoCount(ids.size)} selected`
       : photoCount(ids.size);
-  return pinIcon(cls, photos.find((p) => p.thumb)?.thumb, '', label);
+  return pinIcon(cls, photos.find((p) => p.thumb)?.thumb, label);
 }
 
 /** Refresh a pin's look in place. Swapping the whole icon would replace the
@@ -409,7 +409,7 @@ export function interpolate() {
     }
   });
 
-  const outside = timed.filter((p) => p.lat == null).length;
+  const outside = timed.filter(isUnplaced).length;
   if (!filled) {
     return { ok: false, msg: outside
       ? `Nothing to fill — the ${outside} un-placed photo${outside > 1 ? 's fall' : ' falls'} outside the placed range.`
