@@ -13,7 +13,7 @@
 import {
   state, emit, isEdited, clickSelect, applyEdit, normDt, photoCount,
 } from './state.js';
-import { stored, store, dragHandle } from './dom.js';
+import { stored, store, dragHandle, keyedList } from './dom.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,11 +32,14 @@ let lastClicked = null;
 /** The card that takes Tab focus, so returning to the list lands where you were. */
 let cursor = null;
 let opts = {};
+/** photo id -> card element. The cards live here, not on the photo records. */
+let cards = null;
 
 const visible = () => state.photos.filter(FILTERS[filter]);
 
 export function initStrip(options) {
   opts = options;
+  cards = keyedList($('stripList'), { create: cardEl, update: paintCard });
   $('stripList').addEventListener('click', onClick);
   $('stripList').addEventListener('dblclick', (ev) => {
     const card = ev.target.closest('.card');
@@ -53,62 +56,57 @@ export function initStrip(options) {
   initResize();
 }
 
-/** Build a card for every photo. Called once per folder; sync() does the rest. */
+/** Reset for a new folder. The cards themselves are built by sync(). */
 export function build() {
-  const frag = document.createDocumentFragment();
-  for (const p of state.photos) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.dataset.id = p.id;
-    card.setAttribute('role', 'option');
-    card.tabIndex = -1;
-    card.innerHTML =
-      '<div class="th"></div><div class="meta">' +
-      '<div class="nm"></div><div class="sub"></div>' +
-      `<div class="flags"><i class="flag">${ICON_TIME}</i><i class="flag">${ICON_PLACE}</i></div>` +
-      '</div>';
-    card.querySelector('.nm').textContent = p.name;
-    card.querySelector('.th').dataset.ext = p.ext || '?';
-    p._el = card;
-    frag.appendChild(card);
-  }
-  $('stripList').replaceChildren(frag);
+  cards.clear();
   lastClicked = null;
   cursor = null;
   if (!state.photos.some(FILTERS[filter])) setFilter('all');
 }
 
+function cardEl(p) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.id = p.id;
+  card.setAttribute('role', 'option');
+  card.tabIndex = -1;
+  card.innerHTML =
+    '<div class="th"></div><div class="meta">' +
+    '<div class="nm"></div><div class="sub"></div>' +
+    `<div class="flags"><i class="flag">${ICON_TIME}</i><i class="flag">${ICON_PLACE}</i></div>` +
+    '</div>';
+  card.querySelector('.nm').textContent = p.name;
+  card.querySelector('.th').dataset.ext = p.ext || '?';
+  return card;
+}
+
+function paintCard(el, p, { show, tabStop }) {
+  el.classList.toggle('hidden', !show(p));
+  el.classList.toggle('sel', state.selection.has(p.id));
+  el.setAttribute('aria-selected', String(state.selection.has(p.id)));
+  el.tabIndex = p.id === tabStop ? 0 : -1;
+  el.classList.toggle('edited', isEdited(p));
+  if (p.thumb && el._thumb !== p.thumb) {
+    el.querySelector('.th').style.backgroundImage = `url('${p.thumb}')`;
+    el._thumb = p.thumb;
+  }
+  el.querySelector('.sub').textContent = p.datetime
+    ? p.datetime.slice(0, 16).replace('T', ' ')
+    : 'No date';
+  const [time, place] = el.querySelectorAll('.flag');
+  time.classList.toggle('off', !p.datetime);
+  time.title = p.datetime ? 'Has a date' : 'No date yet';
+  place.classList.toggle('off', p.lat == null);
+  place.title = p.lat != null ? 'Has a location' : 'No location yet';
+}
+
 export function sync() {
-  const list = $('stripList');
-  const show = FILTERS[filter];
   const shownIds = visible().map((p) => p.id);
   const tabStop = shownIds.includes(cursor) ? cursor
     : shownIds.find((id) => state.selection.has(id)) ?? shownIds[0];
-  let i = 0;
-  for (const p of state.photos) {
-    const el = p._el;
-    if (!el) continue;
-    // Keep the DOM in capture order without rebuilding: move only what moved.
-    if (list.children[i] !== el) list.insertBefore(el, list.children[i] ?? null);
-    i++;
-    el.classList.toggle('hidden', !show(p));
-    el.classList.toggle('sel', state.selection.has(p.id));
-    el.setAttribute('aria-selected', String(state.selection.has(p.id)));
-    el.tabIndex = p.id === tabStop ? 0 : -1;
-    el.classList.toggle('edited', isEdited(p));
-    if (p.thumb && el._thumb !== p.thumb) {
-      el.querySelector('.th').style.backgroundImage = `url('${p.thumb}')`;
-      el._thumb = p.thumb;
-    }
-    el.querySelector('.sub').textContent = p.datetime
-      ? p.datetime.slice(0, 16).replace('T', ' ')
-      : 'No date';
-    const [time, place] = el.querySelectorAll('.flag');
-    time.classList.toggle('off', !p.datetime);
-    time.title = p.datetime ? 'Has a date' : 'No date yet';
-    place.classList.toggle('off', p.lat == null);
-    place.title = p.lat != null ? 'Has a location' : 'No location yet';
-  }
+  // Every photo keeps a card; the filter only hides them, so the list stays in
+  // capture order and a filter change costs no DOM.
+  cards.sync(state.photos, { show: FILTERS[filter], tabStop });
 
   const n = state.photos.length;
   const undated = state.photos.filter(FILTERS.undated).length;
@@ -168,7 +166,7 @@ function onKey(ev) {
     const id = order[Math.max(0, Math.min(order.length - 1, to))];
     if (mod) cursor = id; else select(id, { extend: ev.shiftKey });
     sync();
-    state.photos.find((p) => p.id === id)?._el?.focus();
+    cards.get(id)?.focus();
   } else if (ev.key === 'Enter' || (ev.key === ' ' && mod)) {
     // Plain Space stays the preview shortcut, as everywhere else.
     ev.preventDefault();

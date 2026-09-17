@@ -14,11 +14,12 @@
 import {
   state, selected, applyEdit, dtToMs, roundCoord, clickSelect, markClasses, isEdited,
 } from './state.js';
-import { replay } from './dom.js';
+import { replay, keyedList } from './dom.js';
 
 let map = null;
-/** photo id -> L.Marker */
-const markers = new Map();
+/** photo id -> L.Marker. Clusters have no order of their own, so this list
+ *  only ever adds, updates and removes. */
+let markers = null;
 let cluster = null;
 /** Refreshing cluster icons folds a fanned-out cluster back up, which would
  *  snatch a pin away mid-click, so hold refreshes while one is open. */
@@ -48,6 +49,10 @@ export function initMap(el, opts = {}) {
     spiderLegPolylineOptions: { weight: 1.5, opacity: 0.7, className: 'spiderLeg' },
     iconCreateFunction: clusterIcon,
   }).addTo(map);
+  markers = keyedList(
+    { insert: (m) => cluster.addLayer(m), remove: (m) => cluster.removeLayer(m) },
+    { create: makeMarker, update: paintPin },
+  );
   cluster.on('spiderfied', () => { fannedOut = true; });
   cluster.on('unspiderfied', () => { fannedOut = false; cluster.refreshClusters(); });
 
@@ -239,7 +244,7 @@ function makeMarker(p) {
     for (const g of d.group) {
       // The plugin ignored their moves, so let render add them afresh.
       const mk = markers.get(g.q.id);
-      if (mk) { delete mk.__dragStart; cluster.removeLayer(mk); markers.delete(g.q.id); }
+      if (mk) { delete mk.__dragStart; markers.drop(g.q.id); }
     }
     applyEdit([p, ...d.group.map((g) => g.q)], () => {
       p.lat = roundCoord(d.origin.lat + dLat);
@@ -291,30 +296,21 @@ function drawRoute(live) {
   }
 }
 
+/** Put a pin where its photo says it is, unless a drag is already moving it. */
+function paintPin(m, p) {
+  if (p.id === dragId) return;
+  if (!drag) {
+    // A fanned-out pin sits at its spot in the fan; its real place is kept
+    // aside by the cluster plugin.
+    const cur = m._preSpiderfyLatlng ?? m.getLatLng();
+    if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
+  }
+  paint(m, p);
+}
+
 export function render() {
   if (!map) return;
-  const live = new Set();
-
-  for (const p of state.photos) {
-    if (p.lat == null || p.lon == null) continue;
-    live.add(p.id);
-    let m = markers.get(p.id);
-    if (!m) {
-      m = makeMarker(p);
-      cluster.addLayer(m);
-      markers.set(p.id, m);
-    } else if (!drag) {
-      // A fanned-out pin sits at its spot in the fan; its real place is kept
-      // aside by the cluster plugin.
-      const cur = m._preSpiderfyLatlng ?? m.getLatLng();
-      if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
-    }
-    if (p.id !== dragId) paint(m, p);
-  }
-
-  for (const [id, m] of markers) {
-    if (!live.has(id)) { cluster.removeLayer(m); markers.delete(id); }
-  }
+  markers.sync(state.photos.filter((p) => p.lat != null && p.lon != null));
   // Selection and edits change what a cluster should look like.
   if (!drag && !fannedOut) cluster.refreshClusters();
   drawRoute(false);

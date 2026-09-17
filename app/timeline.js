@@ -19,7 +19,7 @@ import {
   state, selected, applyEdit, emit, clickSelect, markClasses, photoCount,
   dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
 } from './state.js';
-import { replay } from './dom.js';
+import { replay, keyedList } from './dom.js';
 
 const DAY_MS = 86400000;
 /** Zoom limits: about 1 min across 1000px, up to about 10 years. */
@@ -37,8 +37,8 @@ const HINT = 'Drag a photo to set its time · Ctrl+scroll to zoom · drag empty 
 let els = {};
 /** Wall-clock ms at the left edge, and the zoom. */
 const view = { start: 0, msPerPx: 60000 };
-/** photo id -> chip element, rebuilt on every render. */
-const chips = new Map();
+/** photo id -> chip element, kept across renders. */
+let chips = null;
 let drag = null;
 /** A drag coming in from the filmstrip, previewed but not yet dropped. */
 let incoming = null;
@@ -60,6 +60,9 @@ const dayStartMs = (ms) => Math.floor(ms / DAY_MS) * DAY_MS;
 
 export function initTimeline(refs) {
   els = refs;
+  // Chips are keyed by photo, so a render moves them instead of rebuilding
+  // them; the grid, the empty message and the drop guide are not the list's.
+  chips = keyedList(els.track, { key: (d) => d.p.id, create: chipEl, update: placeChip });
   els.track.addEventListener('pointerdown', onTrackDown);
   els.axis.addEventListener('pointerdown', onAxisDown);
   els.root.addEventListener('wheel', onWheel, { passive: false });
@@ -126,9 +129,10 @@ export function render() {
   if (!W) return;
   if (!view.start) fit();
 
-  chips.clear();
-  const frag = document.createDocumentFragment();
-  frag.appendChild(gridEl(W));
+  els.track.querySelector('.tlBox')?.remove();
+  const grid = gridEl(W);
+  const old = els.track.querySelector('.tlGrid');
+  if (old) old.replaceWith(grid); else els.track.prepend(grid);
 
   const { gap, rowH } = metrics();
   const rows = Math.max(1, Math.floor((els.track.clientHeight - 10) / rowH));
@@ -144,42 +148,47 @@ export function render() {
   // wrapping back over the photos at the top.
   let prevX = -Infinity;
   let step = 0;
-  for (const { p, ms } of dated) {
-    const x = xOf(ms);
+  for (const d of dated) {
+    const x = xOf(d.ms);
     step = x - prevX >= gap ? 0 : step + 1;
     prevX = x;
-    const el = chipEl(p);
-    el.style.left = `${x}px`;
-    el.style.top = `${6 + Math.min(step, rows - 1) * rowH}px`;
-    const t = document.createElement('div');
-    t.className = 'chipTime';
-    t.textContent = p.datetime.slice(11, 16);
-    el.appendChild(t);
-    frag.appendChild(el);
-    chips.set(p.id, el);
+    d.x = x;
+    d.top = 6 + Math.min(step, rows - 1) * rowH;
   }
+  chips.sync(dated);
 
-  const n = state.photos.length;
-  if (!dated.length) {
-    const msg = document.createElement('div');
-    msg.className = 'tlEmpty';
-    msg.textContent = n
-      ? `None of these ${photoCount(n)} has a date yet. Drag them here from the list to date them.`
-      : 'Open a folder to see its photos along a timeline.';
-    frag.appendChild(msg);
-  }
-  els.track.replaceChildren(frag);
+  showEmpty(dated.length ? null : state.photos.length);
   drawAxis(W);
 }
 
-function chipEl(p) {
+/** The stand-in shown when nothing on the timeline has a date yet. */
+function showEmpty(n) {
+  const msg = els.track.querySelector('.tlEmpty');
+  if (n === null) { msg?.remove(); return; }
+  const el = msg ?? Object.assign(document.createElement('div'), { className: 'tlEmpty' });
+  el.textContent = n
+    ? `None of these ${photoCount(n)} has a date yet. Drag them here from the list to date them.`
+    : 'Open a folder to see its photos along a timeline.';
+  if (!msg) els.track.appendChild(el);
+}
+
+function chipEl() {
   const el = document.createElement('div');
+  el.appendChild(Object.assign(document.createElement('div'), { className: 'chipTime' }));
+  return el;
+}
+
+function placeChip(el, { p, x, top }) {
+  // Assigning the class wholesale also clears the transient `drag` and `pulse`
+  // markers a previous gesture left behind.
   el.className = markClasses('chip', p);
   el.dataset.id = p.id;
   el.title = `${p.name}\n${p.datetime.replace('T', ' ')}`;
   if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
   else el.dataset.ext = p.ext || '?';  // no decoder for this format in this browser
-  return el;
+  el.style.left = `${x}px`;
+  el.style.top = `${top}px`;
+  el.firstChild.textContent = p.datetime.slice(11, 16);
 }
 
 function tickStep() {
@@ -417,7 +426,7 @@ function moveBox(ev) {
   // Highlight live, but only tell the rest of the app when the box is let go:
   // re-rendering the map on every pointer move is far too much work.
   drag.hits = new Set();
-  for (const [id, el] of chips) {
+  for (const [id, el] of chips.entries()) {
     const c = el.getBoundingClientRect();
     const cx0 = c.left - r.left;
     const cy0 = c.top - r.top;
