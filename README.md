@@ -1,13 +1,91 @@
 # img-taggr
 
-Edit photo **time, date and location** metadata through a **map** and a **timeline** view.
+Edit photo **time, date and location** metadata through a **map** and a
+**timeline** view.
+
+Scanned film comes back with no EXIF at all. A camera with the wrong clock
+stamps a whole trip an hour out. Fixing either one photo at a time is the
+problem this solves: you place two shots on a map and interpolate the walk
+between them, or drag a whole selection along the timeline and keep the
+intervals intact.
 
 Runs two ways from one codebase, as a website with no server or as a desktop
 app.
 
-<img src="imgs/placed.png" width="820" alt="img-taggr with photos placed on the map and dated on the timeline">
+**[Try it in your browser](https://julespatmanidis.github.io/img_taggr/)** (no
+install, no upload, the photos stay on your machine)
 
-## Features 
+<img src="docs/imgs/placed.png" width="820" alt="img-taggr with photos placed on the map and dated on the timeline">
+
+> **Status:** early. Version 0.1.0, Linux desktop and Chromium browsers are what
+> gets used daily. The default save mode writes copies and never touches your
+> originals, but back up anything irreplaceable before pointing a metadata
+> editor at it.
+
+## Formats
+
+| Format | Read | Write | Thumbnail |
+|---|---|---|---|
+| JPEG, PNG | yes | yes | yes |
+| WebP (lossless) | yes | yes | yes |
+| TIFF, HEIC/HEIF | yes | yes | no (see below) |
+| RAW, lossy WebP | no | no | no |
+
+HEIC and TIFF have no thumbnails, since neither the browser nor the `image`
+crate can decode them. Safari decodes HEIC on its own in the web build.
+
+## Quickstart
+
+### Web
+
+The compiled engine is committed, so running it needs nothing but Python:
+
+```
+./dev-server.py      # serves app/ on http://localhost:8080
+```
+
+Use the plain `python3 -m http.server` instead and save-to-folder breaks, so
+prefer this one (`dev-server.py` explains why in its docstring).
+
+To rebuild the engine after changing the Rust code you need
+[Rust](https://rustup.rs) and [Node](https://nodejs.org):
+
+```
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.128
+
+npm run web          # rebuilds the wasm, then serves app/
+```
+
+Open a folder with the button or by dropping it onto the window. Chrome and Edge
+can save straight back to a folder via the File System Access API. Other
+browsers download a ZIP instead (the app detects this and relabels the save
+dialog accordingly).
+
+To deploy, publish `app/` as static files. There is no server side. The
+included GitHub Actions workflow does exactly that on every push to `main`.
+
+### Desktop
+
+Linux only so far. macOS and Windows are untried, and reports are welcome.
+Nothing to install at runtime, since the metadata engine is compiled in.
+Building needs [Rust](https://rustup.rs), [Node](https://nodejs.org) and the
+Tauri system libraries:
+
+```
+sudo dnf install webkit2gtk4.1-devel libsoup3-devel \
+                 librsvg2-devel libappindicator-gtk3-devel
+npm install
+npm run dev          # development window
+npm run build        # .deb / .rpm / AppImage in desktop/target/release/bundle
+```
+
+Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`.
+
+There are no prebuilt binaries yet, so the desktop app is build-from-source for
+now.
+
+## What it does
 
 **Map.** Photos with coordinates appear as pins, joined by a dashed route in
 time order. Nearby pins merge into a numbered cluster, and photos sitting on
@@ -30,108 +108,67 @@ everything.
 
 - Drag a photo to set its time.
 - With several photos selected **they all shift by the same amount**, so the
-  intervals between shots stay as they were. Hold **Alt** to move one photo out of
-  formation.
+  intervals between shots stay as they were. Hold **Alt** to move one photo out
+  of formation.
 - Drag across empty track to select the photos inside a box.
-- Drop undated photos from the list to date them. 
+- Drop undated photos from the list to date them.
 - **Distribute evenly** spaces the selected photos at equal intervals between
   the first and the last, which untangles a burst dropped on one spot.
 - Shots that would overlap step down one row each, earliest on top.
 
-A folder of scans opens with nothing dated and nothing placed. **Date this
-batch** takes a start time and one interval and dates the whole roll in filename
-order, which is the order it was shot in.
+**Batch dating.** A folder of scans opens with nothing dated and nothing placed.
+**Date this batch** takes a start time and one interval and dates the whole roll
+in filename order, which is the order it was shot in.
 
-<img src="imgs/first-run.png" width="820" alt="A freshly opened folder, nothing dated or placed yet">
+<img src="docs/imgs/first-run.png" width="820" alt="A freshly opened folder, nothing dated or placed yet">
 
 ## Editing model
 
-Wall-clock time and UTC offset are **separate fields**.
+Wall-clock time and UTC offset are **separate fields**, so correcting one never
+silently moves the other.
 
 The inspector on the right edits the selection in place. Date and time are one
 `YYYY-MM-DD HH:MM:SS` field. On a mixed selection, changing only the date leaves
-each photo its own time. **Shift by** takes `+3h47m`, `-15s` or `-0:15` and moves 
-every selected photo.
-
-The app stages every change in memory and writes nothing until you press
-**Save**. Amber dots show what is still pending.
+each photo its own time. **Shift by** takes `+3h47m`, `-15s` or `-0:15` and
+moves every selected photo.
 
 Tags written: `DateTimeOriginal`, `CreateDate`, `ModifyDate`, `OffsetTime*`, and
-`GPSLatitude`/`GPSLongitude` with their hemisphere refs.
+`GPSLatitude`/`GPSLongitude` with their hemisphere refs. Every other tag in the
+file is left as it was.
 
-## Architecture
+## Saving
 
-Both targets (desktop and web) run the same metadata code: `engine/` is a plain Rust crate that
-reads and writes in memory. The browser build wraps it in wasm-bindgen, and the
-desktop build calls it directly.
+The app stages every change in memory and writes nothing until you press
+**Save**. Amber dots show what is still pending, and Ctrl+Z unwinds anything
+not yet written.
 
-The map, timeline and inspector never learn which backend they are driving.
-`app/backend.js` exposes one interface with two implementations, and each
-advertises what it can do so the UI hides controls that cannot work.
+Three save modes, with the non-destructive one selected by default:
 
-| | Web | Desktop |
-|---|---|---|
-| Engine | `img-taggr-core` | `img-taggr-core` |
-| Source | folder you pick in the browser | any folder on disk |
-| Writes | new files, or a ZIP download | copies, in-place, or in-place + backups |
-| JPEG · PNG · TIFF · WebP (lossless) · HEIC | yes | yes |
+| Mode | What it does |
+|---|---|
+| **Write copies** (default) | Tagged files go to a new folder. Originals never opened for writing. |
+| **Edit in place, keep backups** | Each original is preserved as `name.ext_original`, the same convention exiftool uses. |
+| **Edit in place** | Overwrites originals. No undo once written. |
 
-## Limitations 
-- Lossy WebP and RAW formats are not supported.
-- HEIC and TIFF have no thumbnails, since neither the browser nor the `image`
-crate can decode them. Safari decodes HEIC on its own in the web build.
+The web build only offers copies, because the browser never holds the
+originals.
 
-## Running
+## Privacy
 
-### Web
+Photos are read locally and never uploaded. There is no server, no account and
+no telemetry, in either build.
 
-```
-npm run web          # builds the wasm, serves app/ on http://localhost:8080
-```
+One exception, stated plainly: the place search box sends what you type to
+[photon.komoot.io](https://photon.komoot.io) to turn it into coordinates. It
+sends the query text only, never a photo or a coordinate from your set, and
+nothing happens until you type in that box.
 
-To deploy, build the wasm and publish `app/` as static files.
-
-Open a folder with the button or by dropping it onto the window. Chrome and Edge
-can save straight back to a folder via the File System Access API. Other
-browsers download a ZIP instead.
-
-### Desktop
-
-Nothing to install at runtime, since the metadata engine is compiled in.
-Building needs Rust, Node and the Tauri system libraries:
-
-```
-sudo dnf install webkit2gtk4.1-devel libsoup3-devel \
-                 librsvg2-devel libappindicator-gtk3-devel
-npm install
-npm run dev          # development window
-npm run build        # .deb / .rpm / AppImage in desktop/target/release/bundle
-```
-
-Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`.
-
-### Tests
-
-```
-npm test             # frontend: state, undo journal, edit logic
-cargo test           # engine: metadata reading and output paths
-```
-
-The frontend tests run on Node, with no dependencies and no build
-step. They cover the modules that never touch the DOM (`state.js` and
-`edits.js`).
-
-### Building the wasm from scratch
-
-```
-rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.128
-./build-wasm.sh
-```
+Map tiles are fetched from their providers as you pan, which is a normal map
+request and reveals the area you are looking at, as any map does.
 
 ## Keyboard
 
-| | |
+| Key | Action |
 |---|---|
 | `Space` | preview the selected photo (`←` `→` step, `Esc` closes) |
 | double-click | show a photo in the other view |
@@ -145,30 +182,21 @@ cargo install wasm-bindgen-cli --version 0.2.128
 | click / `Shift`+click / `Ctrl`+click | select / range / toggle |
 | `?` | list of shortcuts |
 
-## Layout
+## Development
 
 ```
-app/                    frontend, plain ES modules, no build step
-  backend.js            the seam, Tauri IPC or WASM behind one interface
-  state.js              shared state, wall-clock helpers, undo journal
-  edits.js              pure edit logic: shift parsing, date/time merging
-  strip.js              photo list: order, filters, search, dragging photos out
-  map.js                Leaflet view, clustering, drag, route interpolation
-  search.js             place search (Photon)
-  timeline.js           continuous track, rows, group time shift, batch dating
-  datetime.js           keyboard-driven date-time field and calendar
-  preview.js            hover previews and the lightbox
-  stage.js              map/timeline split: enlarge a pane, drag the divider
-  dom.js                small DOM helpers: saved settings, drag handles
-  app.js                wiring: loading, inspector, previews, keyboard, save
-  vendor/               Leaflet, Leaflet.markercluster and the three web fonts
-  wasm/                 generated by ./build-wasm.sh
-test/                   node --test over the DOM-free modules
-engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)
-engine-wasm/src/lib.rs  wasm-bindgen wrapper over engine, no logic of its own
-desktop/src/
-  exif.rs               file I/O around the engine
-  thumb.rs              thumbnail decode
-  paths.rs              output paths + collision handling (unit-tested)
-  lib.rs                Tauri commands
+npm test             # frontend: state, undo journal, edit logic, save modes
+npm run test:rust    # engine metadata handling, desktop output paths
 ```
+
+The frontend tests run on Node, with no dependencies and no build step. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the module map, the engine seam that lets
+one codebase drive both targets, and the conventions worth knowing before
+sending a patch.
+
+Issues and pull requests are welcome, particularly build reports from macOS and
+Windows.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
