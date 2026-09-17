@@ -15,6 +15,10 @@ export const state = {
   selection: new Set(),
   undo: [],
   redo: [],
+  /** Bumped every time the photo list is replaced. Work started for an older
+   *  list checks it and stops, which the folder label cannot do: two loose
+   *  drops carry the same label. */
+  session: 0,
 };
 
 /* ── Change notification ───────────────────────────────────────── */
@@ -35,6 +39,20 @@ export const emit = (reason) => onChange(reason);
 /** The reasons that change nothing but how a photo looks, so a view can patch
  *  its nodes instead of laying them out again. */
 export const isRepaint = (reason) => reason === 'selection' || reason === 'thumbs';
+
+/**
+ * Replace the photo list and open a new session, returning its token. Bundled
+ * because the selection, the journal and the ordering all belong to the list
+ * that is going away, and a caller that forgot one of them left the app in a
+ * state the views cannot describe.
+ */
+export function setPhotos(photos) {
+  state.photos = photos;
+  state.selection.clear();
+  resetHistory();
+  sortPhotos();
+  return ++state.session;
+}
 
 /* ── Wall-clock helpers ────────────────────────────────────────── */
 export const pad = (n, w = 2) => String(n).padStart(w, '0');

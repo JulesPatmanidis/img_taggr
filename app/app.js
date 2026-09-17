@@ -3,7 +3,7 @@
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
   roundCoord, dayOf, photoCount, fmtDur,
-  EDITABLE, rebase, revertToBaseline, resetHistory, sortPhotos,
+  EDITABLE, rebase, revertToBaseline, resetHistory, setPhotos,
 } from './state.js';
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
@@ -82,27 +82,24 @@ async function openFolder(pending) {
     if (!res) { $('folderLabel').textContent = prevLabel; return; }
     res.activate?.();
     state.folder = res.label;
-    state.selection.clear();
-    resetHistory();
-    state.photos = res.photos.map((p) => {
+    const session = setPhotos(res.photos.map((p) => {
       const photo = { ...p, id: p.path, thumb: null,
         lat: roundCoord(p.lat), lon: roundCoord(p.lon) };
       // Keep the as-read values so "edited" is always a real comparison rather
       // than a flag we have to remember to set.
       rebase(photo);
       return photo;
-    });
+    }));
 
     $('folderLabel').textContent = res.label.length > 44 ? `…${res.label.slice(-43)}` : res.label;
     $('folderLabel').title = res.label;
-    sortPhotos();
     Strip.build();
     emit('photos');
     MapView.fit();
     TL.fit();
     toast(photoCount(state.photos.length)
       + (res.unreadable ? ` · ${res.unreadable} unreadable` : ''));
-    loadThumbs();
+    loadThumbs(session);
   } catch (e) {
     toast(String(e), true);
     $('folderLabel').textContent = '';
@@ -111,17 +108,19 @@ async function openFolder(pending) {
   }
 }
 
-/** Fetch thumbnails with bounded concurrency so a big folder stays responsive. */
-async function loadThumbs() {
+/** Fetch thumbnails with bounded concurrency so a big folder stays responsive.
+ *  `token` is the session this batch belongs to: when a second folder is opened
+ *  the token moves on and these workers stop rather than decoding images for
+ *  photos nobody can see any more. */
+async function loadThumbs(token) {
   const queue = state.photos.slice();
-  const token = state.folder;
   let dirty = false;
   const flush = () => { if (dirty) { dirty = false; renderAll('thumbs'); } };
   const ticker = setInterval(flush, 220);
 
   const worker = async () => {
     while (queue.length) {
-      if (state.folder !== token) return;
+      if (state.session !== token) return;
       const p = queue.shift();
       try {
         p.thumb = await backend.loadThumb(p);

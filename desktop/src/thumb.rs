@@ -23,8 +23,9 @@ impl Size {
     /// Long edge in pixels.
     fn edge(self) -> u32 {
         match self {
-            // Comfortably above what any view asks for on a high-DPI display;
-            // raising it costs memory on big folders.
+            // Must match THUMB_EDGE in app/backend.js, which is what the web
+            // build renders to. Comfortably above what any view asks for on a
+            // high-DPI display; raising it costs memory on big folders.
             Size::Thumb => 384,
             // Sharp on a large display, and still quick to hand to the webview
             // as a data URL.

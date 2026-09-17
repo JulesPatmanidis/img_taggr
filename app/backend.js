@@ -72,6 +72,11 @@ export function saveMode(id) {
 /** The modes a backend can actually perform, in the order they are offered. */
 export const modesFor = (caps) => SAVE_MODES.filter((m) => caps.saveModes.includes(m.id));
 
+/** Long edge of a thumbnail, in pixels. The desktop engine renders to the same
+ *  number in desktop/src/thumb.rs, so a card looks the same in both builds. A
+ *  card is at most 132 CSS px wide, which this covers on a 3x display. */
+const THUMB_EDGE = 384;
+
 /** Where a save put the files, for the message afterwards. */
 const wroteTo = (label) => ({ kind: 'folder', label });
 const downloaded = (label) => ({ kind: 'download', label });
@@ -371,10 +376,13 @@ async function webBackend() {
         // without us rotating pixels by hand.
         const bmp = await createImageBitmap(file, {
           imageOrientation: 'from-image',
-          resizeWidth: 320,
+          // Decoding straight to this width keeps a 40-megapixel photo from
+          // being built full-size first; a portrait one is still taller than
+          // the long edge, so the canvas below finishes the job.
+          resizeWidth: THUMB_EDGE,
           resizeQuality: 'medium',
         });
-        const scale = Math.min(1, 320 / Math.max(bmp.width, bmp.height));
+        const scale = Math.min(1, THUMB_EDGE / Math.max(bmp.width, bmp.height));
         const c = document.createElement('canvas');
         c.width = Math.max(1, Math.round(bmp.width * scale));
         c.height = Math.max(1, Math.round(bmp.height * scale));

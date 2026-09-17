@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   state, applyEdit, setOnChange, undo, redo, isEdited, rebase, resetHistory,
   sortPhotos, dtToMs, msToDt, normDt,
-  emit, isRepaint, clickSelect,
+  emit, isRepaint, clickSelect, setPhotos,
 } from '../app/state.js';
 
 /** A folder of photos, plus a count of the re-renders they trigger. */
@@ -226,4 +226,44 @@ test('isRepaint: only selection and thumbs skip the layout', () => {
   assert.equal(isRepaint('edits'), false);
   assert.equal(isRepaint('photos'), false);
   assert.equal(isRepaint(undefined), false);
+});
+
+/* ── Sessions ──────────────────────────────────────────────────── */
+
+test('setPhotos: each list gets its own session token', () => {
+  folder({});
+  const first = setPhotos([]);
+  const second = setPhotos([]);
+  assert.equal(second, first + 1);
+  assert.equal(state.session, second);
+});
+
+test('setPhotos: two loads of the same folder still differ', () => {
+  // The bug this exists for: the old token was the folder label, and two loose
+  // drops carry the same label, so the first load never learned it was stale.
+  folder({});
+  const a = setPhotos([{ id: 'x', name: 'x.jpg', orig: {} }]);
+  const b = setPhotos([{ id: 'x', name: 'x.jpg', orig: {} }]);
+  assert.notEqual(a, b);
+});
+
+test('setPhotos: the outgoing list takes its selection and journal with it', () => {
+  folder({ lat: 1 });
+  applyEdit(state.photos, (ps) => { ps[0].lat = 2; });
+  state.selection.add('p0');
+  setPhotos([]);
+  assert.equal(state.selection.size, 0);
+  assert.equal(state.undo.length, 0);
+  assert.equal(state.redo.length, 0);
+});
+
+test('setPhotos: the new list arrives sorted', () => {
+  folder({});
+  const mk = (id, datetime) => {
+    const p = { id, name: `${id}.jpg`, datetime, offset: null, lat: null, lon: null };
+    rebase(p);
+    return p;
+  };
+  setPhotos([mk('b', '2023-01-02T00:00:00'), mk('a', '2023-01-01T00:00:00'), mk('u', null)]);
+  assert.deepEqual(state.photos.map((p) => p.id), ['u', 'a', 'b']);
 });
