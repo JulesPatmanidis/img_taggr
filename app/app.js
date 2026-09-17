@@ -2,7 +2,7 @@
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
-  roundCoord, dayOf, photoCount, fmtDur,
+  roundCoord, dayOf, photoCount, fmtDur, dtToMs, msToDt,
   EDITABLE, rebase, revertToBaseline, resetHistory, setPhotos,
 } from './state.js';
 import * as MapView from './map.js';
@@ -190,11 +190,21 @@ function renderThumbs(sel) {
   }
 }
 
-/** "14:12–14:45" for a mixed selection, so the field says what it is hiding. */
+/**
+ * What a mixed selection is hiding, as a span between its two extremes. The
+ * ends are compared as instants, not as clock strings: two photos a day apart
+ * at the same minute are a range, and 23:50–00:10 must not read backwards.
+ */
 function timeRange(sel) {
-  const times = sel.filter((p) => p.datetime).map((p) => p.datetime.slice(11, 16)).sort();
-  if (times.length < 2 || times[0] === times[times.length - 1]) return '';
-  return `Mixed · ${times[0]}–${times[times.length - 1]}`;
+  const dated = sel.filter((p) => p.datetime);
+  if (dated.length < 2) return '';
+  const ms = dated.map((p) => dtToMs(p.datetime));
+  const lo = msToDt(Math.min(...ms));
+  const hi = msToDt(Math.max(...ms));
+  if (lo === hi) return '';
+  return dayOf(lo) === dayOf(hi)
+    ? `Mixed · ${lo.slice(11, 16)}–${hi.slice(11, 16)}`
+    : `Mixed · ${lo.slice(0, 16).replace('T', ' ')} – ${hi.slice(0, 16).replace('T', ' ')}`;
 }
 
 function renderInspector(edited = editedPhotos().length) {
@@ -202,6 +212,7 @@ function renderInspector(edited = editedPhotos().length) {
   const has = sel.length > 0;
   $('insIdle').classList.toggle('hidden', has);
   $('insSel').classList.toggle('hidden', !has);
+  $('insBody').classList.toggle('idle', !has);
   if (!has) renderIdle();
 
   for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
@@ -627,9 +638,14 @@ TL.initTimeline({
   date: $('tlDate'),
   spread: $('btnSpread'),
   batch: $('batch'),
+  batchWhy: $('batchWhy'),
   batchStart: $('fBatchStart'),
+  batchCal: $('btnBatchCal'),
   batchGap: $('fBatchGap'),
   batchApply: $('btnBatch'),
+  batchSeed: $('btnSeedDates'),
+  batchOpen: $('btnBatchOpen'),
+  batchClose: $('btnBatchClose'),
   toast,
   hint: (msg) => { $('timeHint').textContent = msg; },
   onReveal: (id) => reveal([id], { map: true }),

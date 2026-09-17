@@ -17,9 +17,10 @@
 
 import {
   state, selected, applyEdit, emit, clickSelect, markClasses, mark, isRepaint,
-  photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay,
+  photoCount, dtToMs, msToDt, dayOf, fmtDayLabel, fmtDur, seedDay, normDt,
 } from './state.js';
 import { parseShift } from './edits.js';
+import { dateTimeField, calendar } from './datetime.js';
 import { replay, keyedList } from './dom.js';
 
 const DAY_MS = 86400000;
@@ -166,6 +167,7 @@ export function render(reason) {
   chips.sync(dated);
 
   showEmpty(dated.length ? null : state.photos.length);
+  showBatch(dated.length);
   drawAxis(W);
   drawHead(W);
 }
@@ -177,7 +179,7 @@ function drawHead(W) {
   const mid = view.start + (W / 2) * view.msPerPx;
   const dated = state.photos.some((p) => p.datetime);
   const day = msToDt(mid).slice(0, 10);
-  els.year.textContent = dated ? day.slice(0, 4) : '';
+  els.year.textContent = state.photos.length ? day.slice(0, 4) : '';
   els.date.textContent = dated ? fmtDayLabel(day) : 'No date set yet';
   syncSpread();
 }
@@ -201,8 +203,9 @@ function spreadSelection() {
   const lo = dtToMs(list[0].datetime);
   const step = (dtToMs(list[list.length - 1].datetime) - lo) / (list.length - 1);
   if (!step) return;
+  // `list` is already in the order we want; applyEdit diffs it positionally,
+  // so re-sorting inside the mutate would break that correspondence.
   applyEdit(list, (ps) => {
-    ps.sort((a, b) => dtToMs(a.datetime) - dtToMs(b.datetime));
     ps.forEach((p, i) => { p.datetime = msToDt(snap(lo + i * step)); });
   });
   els.toast(`Spread ${photoCount(list.length)} evenly, ${fmtDur(step / 1000)} apart`);
@@ -216,45 +219,91 @@ function spreadSelection() {
  * starting point, not a claim: every photo can still be dragged afterwards.
  */
 let batchTouched = false;
+/** The session the start time was seeded for, so a new folder re-seeds it. */
+let batchSession = null;
+/** Set while the panel has been opened by hand over an already-dated roll. */
+let batchOpen = false;
+let batchField = null;
+/** The committed start, as a wall-clock stamp. */
+let batchStart = null;
+
+const undatedPhotos = () => state.photos.filter((p) => !p.datetime)
+  .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
 
 function initBatch() {
+  batchField = dateTimeField(els.batchStart, {
+    onCommit: ({ date, time }) => {
+      batchTouched = true;
+      const base = batchStart ?? defaultStart();
+      batchStart = `${date ?? base.slice(0, 10)}T${time ?? base.slice(11)}`;
+      batchField.set(batchStart);
+    },
+  });
+  calendar(els.batchCal, {
+    current: () => (batchStart ?? defaultStart()).slice(0, 10),
+    onPick: (day) => {
+      batchTouched = true;
+      batchStart = `${day}T${(batchStart ?? defaultStart()).slice(11)}`;
+      batchField.set(batchStart);
+    },
+    absorbIn: [els.track],
+  });
   els.batchApply.addEventListener('click', applyBatch);
-  for (const el of [els.batchStart, els.batchGap]) {
-    el.addEventListener('input', () => { batchTouched = true; });
-    el.addEventListener('keydown', (ev) => {
-      ev.stopPropagation();
-      if (ev.key === 'Enter') applyBatch();
-    });
-  }
+  els.batchSeed.addEventListener('click', seedFromFiles);
+  els.batchGap.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter') applyBatch();
+  });
+  els.batchGap.addEventListener('input', () => { batchTouched = true; });
+  els.batchOpen.addEventListener('click', () => setBatchOpen(!batchOpen));
+  els.batchClose.addEventListener('click', () => setBatchOpen(false));
 }
 
-/** Until someone types in it, the start follows the folder's own timestamps. */
+const defaultStart = () => `${seedDay(state.photos[0] ?? {})}T09:00:00`;
+
+/** Until someone edits it, the start follows the folder's own timestamps. */
 function seedBatch() {
-  if (batchTouched || !state.photos.length) return;
-  els.batchStart.value = `${seedDay(state.photos[0])} 09:00`;
+  if (batchTouched && batchSession === state.session) return;
+  if (batchSession !== state.session) { batchTouched = false; batchSession = state.session; }
+  batchStart = defaultStart();
+  batchField.set(batchStart);
 }
 
-/** "2026-09-07 09:00" or "…09:00:00" → the wall-clock ms, or null. */
-function parseStart(text) {
-  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(:\d{2})?$/.exec(text.trim());
-  return m ? dtToMs(`${m[1]}T${m[2]}${m[3] ?? ':00'}`) : null;
+function setBatchOpen(on) {
+  batchOpen = on;
+  els.batchOpen.setAttribute('aria-expanded', String(on));
+  render();
+  if (on) els.batchStart.focus(); else els.batchOpen.focus();
 }
 
 function applyBatch() {
-  const start = parseStart(els.batchStart.value);
-  if (start === null) { els.toast('Start must look like 2026-09-07 09:00', true); return; }
+  const start = dtToMs(batchStart ?? '');
+  if (start === null) { els.toast('Set a start date and time first', true); return; }
   const gap = parseShift(els.batchGap.value);
   if (gap === null || gap <= 0) { els.toast('Gap must look like 5m, 30s or 1h15m', true); return; }
 
-  const undated = state.photos.filter((p) => !p.datetime)
-    .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+  const undated = undatedPhotos();
   if (!undated.length) return;
   applyEdit(undated, (ps) => {
-    ps.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
     ps.forEach((p, i) => { p.datetime = msToDt(start + i * gap * 1000); });
   });
+  batchOpen = false;
   fit();
-  els.toast(`Dated ${photoCount(undated.length)} from ${els.batchStart.value.trim()}, ${fmtDur(gap)} apart`);
+  els.toast(`Dated ${photoCount(undated.length)} from ${batchStart.replace('T', ' ')}, ${fmtDur(gap)} apart`);
+}
+
+/**
+ * The other honest starting point: a scan's file timestamp is usually when it
+ * was scanned, not when it was shot, but it is in the right order and can be
+ * shifted as a group afterwards.
+ */
+function seedFromFiles() {
+  const list = undatedPhotos().filter((p) => p.file_modified);
+  if (!list.length) { els.toast('None of the undated photos has a file timestamp', true); return; }
+  applyEdit(list, (ps) => { for (const p of ps) p.datetime = normDt(p.file_modified); });
+  batchOpen = false;
+  fit();
+  els.toast(`Dated ${photoCount(list.length)} from file timestamps — now drag to correct them`);
 }
 
 function repaint() {
@@ -267,13 +316,34 @@ function repaint() {
   }
 }
 
-/** Nothing on the timeline has a date yet: offer to date the whole batch. */
+/**
+ * Bulk dating is offered for as long as anything is undated. With nothing on
+ * the track it takes the whole pane, as the empty state; once there are chips
+ * under it, it waits behind a header button so it cannot hide them.
+ */
+function showBatch(nDated) {
+  const undated = state.photos.filter((p) => !p.datetime).length;
+  const takeover = Boolean(state.photos.length) && !nDated;
+  const show = undated > 0 && (takeover || batchOpen);
+  if (!undated) batchOpen = false;
+
+  els.batchOpen.classList.toggle('hidden', !undated || takeover);
+  els.batchOpen.textContent = `Date ${photoCount(undated)}…`;
+  els.batch.classList.toggle('hidden', !show);
+  els.batch.classList.toggle('over', !takeover);
+  els.batchClose.classList.toggle('hidden', takeover);
+  if (!show) return;
+
+  seedBatch();
+  els.batchApply.textContent = `Apply to ${photoCount(undated)}`;
+  els.batchWhy.textContent = takeover
+    ? 'Most scans have no timestamp. Set a start time and the gap between shots to date them all at once, in filename order, then fine-tune by dragging.'
+    : `${photoCount(undated)} still have no date. Set a start time and the gap between shots to place them in filename order, then fine-tune by dragging.`;
+  els.batchSeed.disabled = !state.photos.some((p) => !p.datetime && p.file_modified);
+}
+
+/** The stand-in shown when there is no folder at all. */
 function showEmpty(n) {
-  els.batch.classList.toggle('hidden', n === null || !n);
-  if (n) {
-    seedBatch();
-    els.batchApply.textContent = `Apply to ${photoCount(n)}`;
-  }
   const msg = els.track.querySelector('.tlEmpty');
   if (n !== 0) { msg?.remove(); return; }
   const el = msg ?? Object.assign(document.createElement('div'), { className: 'tlEmpty' });

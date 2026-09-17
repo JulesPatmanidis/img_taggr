@@ -581,12 +581,26 @@ path.route, path.spiderLeg { stroke: var(--accent); }
   display: flex; align-items: center; gap: 28px; padding: 0 24px;
   background: var(--panel-2); border: 1px dashed var(--line); border-radius: var(--radius);
 }
+/* Opened by hand over a track that already has chips on it: solid, and clearly
+   a thing sitting on top of them rather than the pane's own empty state. */
+.batch.over {
+  border-style: solid; background: var(--panel);
+  box-shadow: 0 12px 34px rgba(0,0,0,.45);
+}
+.batchClose {
+  position: absolute; right: 8px; top: 8px;
+  display: flex; padding: 5px; border: none; border-radius: var(--radius);
+  background: none; color: var(--muted); cursor: pointer;
+}
+.batchClose:hover { background: var(--hover); color: var(--text); }
+.batchAlt { margin-left: auto; align-self: center; padding-left: 12px; }
+.batchFields .dt { width: 100%; }
 .batchWhy { max-width: 240px; }
 .batchWhy h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 600; font-size: 15px; }
 .batchWhy p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.55; }
 .batchSep { width: 1px; height: 64px; background: var(--line); flex: 0 0 auto; }
 .batchFields { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-.batchFields .fld { width: 170px; }
+.batchFields .fld { width: 210px; }
 .batchFields .fld.narrow { width: 120px; }
 .batchFields .btn { height: 36px; }
 
@@ -693,6 +707,8 @@ path.route, path.spiderLeg { stroke: var(--accent); }
 
 /* Something selected: what it is, then the two fields worth fixing. */
 .insThumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.insThumbs:empty { display: none; }
+.insBody.idle .insShow { order: 9; }
 .insThumb {
   position: relative; width: 60px; height: 60px; flex: 0 0 auto; padding: 0;
   display: flex; align-items: center; justify-content: center;

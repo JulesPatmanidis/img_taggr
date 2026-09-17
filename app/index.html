@@ -146,6 +146,9 @@
               <div id="tlDate" class="tlDate">No date set yet</div>
             </div>
             <div class="tlHeadBtns">
+              <button id="btnBatchOpen" class="btn sm hidden" type="button"
+                aria-expanded="false" aria-controls="batch"
+                title="Date the photos that still have no date">Date undated…</button>
               <button id="btnSpread" class="btn sm accent" disabled
                 title="Space the selected photos evenly between the first and the last">Distribute evenly</button>
               <button class="maxBtn" data-pane="time" type="button" aria-pressed="false"
@@ -160,18 +163,33 @@
             <div id="tlTrack" class="tlTrack"></div>
           </div>
 
-          <!-- Nothing is dated yet: offer to date the whole roll in one step. -->
+          <!-- Bulk dating: the whole roll at first, whatever is left after that. -->
           <div id="batch" class="batch hidden">
+            <button id="btnBatchClose" class="batchClose hidden" type="button" aria-label="Close">
+              <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+            </button>
             <div class="batchWhy">
               <h3>Date this batch</h3>
-              <p>Most scans have no timestamp. Set a start time and the gap between
+              <p id="batchWhy">Most scans have no timestamp. Set a start time and the gap between
                 shots to date them all at once, in filename order, then fine-tune by dragging.</p>
             </div>
             <div class="batchSep"></div>
             <div class="batchFields">
-              <label class="fld"><span>Start</span><input id="fBatchStart" type="text" value="2026-01-01 09:00" /></label>
+              <div class="fld">
+                <label for="fBatchStart">Start</label>
+                <div class="dt">
+                  <input id="fBatchStart" type="text" inputmode="numeric" />
+                  <button id="btnBatchCal" class="calBtn" type="button" aria-label="Open calendar">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M5 1.5v3M11 1.5v3" stroke="currentColor" stroke-width="1.3"/></svg>
+                  </button>
+                </div>
+              </div>
               <label class="fld narrow"><span>Gap between shots</span><input id="fBatchGap" type="text" value="5m" /></label>
               <button id="btnBatch" class="btn primary">Apply</button>
+            </div>
+            <div class="batchAlt">
+              <button id="btnSeedDates" class="link" type="button"
+                title="Set capture time from each file's modification date">Use file timestamps instead</button>
             </div>
           </div>
 
@@ -192,6 +210,12 @@
           <div class="insHead">
             <span id="selLabel" class="selLabel">Nothing selected</span>
             <span id="editLabel" class="pill hidden"></span>
+          </div>
+
+          <div id="insThumbs" class="insThumbs"></div>
+          <div class="insShow">
+            <button id="btnShowMap" class="btn sm" disabled title="Double-click a photo to do the same">Show on map</button>
+            <button id="btnShowTime" class="btn sm" disabled title="Double-click a photo to do the same">Show on timeline</button>
           </div>
 
           <!-- Nothing selected: what the folder still needs, and a way in. -->
@@ -215,12 +239,6 @@
 
           <!-- Something selected: what it is, and the two fields worth fixing. -->
           <div id="insSel" class="insSel hidden">
-            <div id="insThumbs" class="insThumbs"></div>
-            <div class="insShow">
-              <button id="btnShowMap" class="btn sm" disabled title="Double-click a photo to do the same">Show on map</button>
-              <button id="btnShowTime" class="btn sm" disabled title="Double-click a photo to do the same">Show on timeline</button>
-            </div>
-
             <section class="insSec">
               <h3>Time</h3>
               <div class="fld">

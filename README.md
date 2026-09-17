@@ -58,9 +58,11 @@ everything.
   a camera clock that was wrong for a whole trip. Hold **Alt** to move one photo
   out of formation.
 - Drag across empty track to select the photos inside a box.
-- Drop undated photos from the list to date them. While nothing is dated at
-  all, **Date this batch** takes a start time and one interval and dates the
-  whole roll in filename order, to be corrected from there.
+- Drop undated photos from the list to date them. **Date this batch** does the
+  rest in one step: it takes a start time and one interval and dates everything
+  still undated in filename order, or takes the file timestamps instead, both
+  to be corrected from there. It fills the timeline while nothing is dated at
+  all, and waits behind a header button once there are photos on the track.
 - **Distribute evenly** spaces the selected photos at equal intervals between
   the first and the last, which untangles a burst dropped on one spot.
 - Shots that would overlap step down one row each, earliest on top, so a burst

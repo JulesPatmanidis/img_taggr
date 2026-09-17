@@ -159,19 +159,40 @@ function initSearch() {
    filename order a scanned roll was shot in. */
 function initSort() {
   const menu = $('sortMenu');
-  const open = (on) => {
+  const items = () => [...menu.querySelectorAll('[data-sort]')];
+  const open = (on, { focus = true } = {}) => {
     menu.classList.toggle('hidden', !on);
     $('btnSort').setAttribute('aria-expanded', String(on));
+    if (!focus) return;
+    if (on) items()[0].focus(); else $('btnSort').focus();
   };
   $('btnSort').addEventListener('click', () => open(menu.classList.contains('hidden')));
+  $('btnSort').addEventListener('keydown', (ev) => {
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    ev.preventDefault();
+    open(true);
+  });
   menu.addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-sort]');
     if (!b) return;
     setSort(b.dataset.sort);
     open(false);
   });
+  // A menu you can open with the keyboard has to be navigable and escapable
+  // with it too, or the focus lands somewhere it cannot leave.
+  menu.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    const list = items();
+    const at = list.indexOf(document.activeElement);
+    if (ev.key === 'Escape') { ev.preventDefault(); open(false); return; }
+    if (ev.key === 'Tab') { open(false, { focus: false }); return; }
+    const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: list.length - 1 }[ev.key];
+    if (to === undefined) return;
+    ev.preventDefault();
+    list[(to + list.length) % list.length].focus();
+  });
   document.addEventListener('pointerdown', (ev) => {
-    if (!ev.target.closest('.menuWrap')) open(false);
+    if (!ev.target.closest('.menuWrap')) open(false, { focus: false });
   });
   // Boot: the other views are not up yet, so restore the order without a render.
   setSort(stored('sort') === 'name' ? 'name' : 'time', { quiet: true });
