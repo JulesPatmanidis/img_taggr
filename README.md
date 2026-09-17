@@ -20,9 +20,13 @@ fix its time.
 ## The photo list and the two views
 
 The list on the left is where photos come from. It is sorted by capture time
-with undated photos first, and **No date** / **No location** filters show what
-is still to do. Drag photos from it onto the map or the timeline. Hover any
-photo for a larger preview; press **Space** for a full-size one.
+with undated photos first (the sort menu switches to filename order, which is
+the order a scanned roll was shot in), and the **Ready** / **No date** /
+**No location** chips show what is still to do. Each row carries its shot
+number, so a roll can be read off the list, and one line saying what it is
+still missing. The box above filters by filename. Drag photos from the list
+onto the map or the timeline. Hover any photo for a larger preview; press
+**Space** for a full-size one.
 
 The map sits above the timeline so a photo's place and time are on screen
 together; press **M** or **T** to give either one the whole stage.
@@ -54,8 +58,11 @@ everything.
   a camera clock that was wrong for a whole trip. Hold **Alt** to move one photo
   out of formation.
 - Drag across empty track to select the photos inside a box.
-- Drop undated photos from the list to date them, or date them all at once from
-  their file timestamps and correct from there.
+- Drop undated photos from the list to date them. While nothing is dated at
+  all, **Date this batch** takes a start time and one interval and dates the
+  whole roll in filename order, to be corrected from there.
+- **Distribute evenly** spaces the selected photos at equal intervals between
+  the first and the last, which untangles a burst dropped on one spot.
 - Shots that would overlap step down one row each, earliest on top, so a burst
   reads as a staircase.
 
@@ -214,16 +221,16 @@ app/                    frontend — plain ES modules, no build step
   backend.js            the seam: Tauri IPC or WASM, one interface; save modes
   state.js              shared state, wall-clock helpers, undo journal
   edits.js              pure edit logic: shift parsing, date/time merging
-  strip.js              photo list: order, filters, dragging photos out
+  strip.js              photo list: order, filters, search, dragging photos out
   map.js                Leaflet view, clustering, drag, route interpolation
   search.js             place search (Photon)
-  timeline.js           continuous track, rows, group time shift
+  timeline.js           continuous track, rows, group time shift, batch dating
   datetime.js           keyboard-driven date-time field and calendar
   preview.js            hover previews and the lightbox
   stage.js              map/timeline split: enlarge a pane, drag the divider
   dom.js                small DOM helpers: saved settings, drag handles
   app.js                wiring: loading, inspector, previews, keyboard, save
-  vendor/               Leaflet and Leaflet.markercluster
+  vendor/               Leaflet, Leaflet.markercluster and the three web fonts
   wasm/                 generated — built by ./build-wasm.sh
 test/                   node --test over the DOM-free modules
 engine/src/lib.rs       the metadata engine, shared by both targets (unit-tested)
