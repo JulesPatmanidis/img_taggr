@@ -165,22 +165,27 @@ function renderIdle() {
   $('btnPickUnplaced').disabled = !unplaced;
 }
 
-/** The strip of what is selected, up to a row's worth. */
+/** The strip of what is selected, up to a row's worth. Each one opens the
+ *  lightbox on that photo, so it is a button and not a decorated div. */
 function renderThumbs(sel) {
   const box = $('insThumbs');
   box.replaceChildren();
   for (const p of sel.slice(0, 8)) {
-    const el = document.createElement('div');
+    const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'insThumb';
+    el.dataset.id = p.id;
     if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
     else el.dataset.ext = p.ext || '?';
-    el.title = `${p.name} — preview with Space`;
+    el.title = `${p.name} — enlarge`;
+    el.setAttribute('aria-label', `Enlarge ${p.name}`);
     box.appendChild(el);
   }
   if (sel.length > 8) {
     const more = document.createElement('div');
     more.className = 'insThumb more';
     more.textContent = `+${sel.length - 8}`;
+    more.title = `${sel.length - 8} more selected`;
     box.appendChild(more);
   }
 }
@@ -457,16 +462,19 @@ function applyCaps() {
 
 /* ── Previews ────────────────────────────────────────────────── */
 /** Full-size view of the selection's first photo, stepping through them all. */
-function preview() {
+function preview(startId) {
   if (!state.photos.length) return;
   const ids = state.photos.map((p) => p.id);
-  openLightbox(ids, state.photos.find((p) => state.selection.has(p.id))?.id ?? ids[0]);
+  openLightbox(ids, startId ?? state.photos.find((p) => state.selection.has(p.id))?.id ?? ids[0]);
 }
 initLightbox({ loadPreview: (p) => backend.loadPreview(p) });
 hoverPreview($('stripList'), '.card .th', (el) => el.closest('.card').dataset.id);
 hoverPreview($('tlTrack'), '.chip', (el) => el.dataset.id);
 hoverPreview($('map'), '.leaflet-marker-icon', MapView.photoIdOf);
-$('insThumbs').addEventListener('click', preview);
+$('insThumbs').addEventListener('click', (ev) => {
+  const el = ev.target.closest('.insThumb[data-id]');
+  if (el) preview(el.dataset.id);
+});
 $('btnPickUndated').addEventListener('click', () => selectWhere((p) => !p.datetime));
 $('btnPickUnplaced').addEventListener('click', () => selectWhere((p) => p.lat == null));
 
