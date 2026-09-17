@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Serve app/ for the web build.
 
-Two things the stock `python3 -m http.server` gets wrong causing quiet fails:
+Two things the stock `python3 -m http.server` gets wrong, both of which fail
+quietly:
 
-  caching    It sends no cache headers at all, so browsers fall back to
+  caching    It sends no cache headers at all so browsers fall back to
              heuristic freshness and may not revalidate. An edited module then
-             loads from cache while its neighbours load fresh, and the mismatch
-             fails at the import, which kills the whole app, since every
-             listener is registered by the module that failed to load. The only
-             symptom is one line in the console.
+             loads from cache while its neighbours load fresh, and the
+             mismatch fails at the import. That kills the whole app, because
+             the module that failed to load is the one registering every
+             listener. One line in the console is the only symptom.
 
-  0.0.0.0    Only localhost and 127.0.0.1 are trustworthy origins. Served on
-             0.0.0.0 the page is not a secure context, so the File System
-             Access API is missing and Chrome and Edge silently lose
-             save-to-folder, falling back to ZIP downloads.
+  0.0.0.0    Only localhost and 127.0.0.1 count as trustworthy origins. On
+             0.0.0.0 the page is not a secure context, so the browser hides
+             the File System Access API and Chrome and Edge lose
+             save-to-folder, falling back to ZIP downloads without saying so.
 
 Usage: dev-server.py [port]
 """

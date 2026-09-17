@@ -1,7 +1,7 @@
 /* Shared state, wall-clock time helpers, and the undo journal.
  *
- * Time model: a photo's timestamp is *wall clock* — the numbers a camera wrote
- * on the file — held as "YYYY-MM-DDTHH:MM:SS" with no zone attached. The UTC
+ * Time model: a photo's timestamp is *wall clock*, the numbers a camera wrote
+ * on the file, held as "YYYY-MM-DDTHH:MM:SS" with no zone attached. The UTC
  * offset is a separate, independent field. That separation is deliberate: the
  * common repair is "the clock read 3h47m wrong", which must not be conflated
  * with "I was in a different timezone". All arithmetic runs through Date.UTC so
@@ -11,7 +11,7 @@
 export const state = {
   folder: null,
   photos: [],
-  /** Photo ids, insertion-ordered. Opaque — the backend decides their shape. */
+  /** Photo ids, insertion-ordered. Opaque, since the backend picks their shape. */
   selection: new Set(),
   undo: [],
   redo: [],
@@ -27,7 +27,7 @@ export const state = {
  *
  *  What the callback gets is the *reason*, which is what lets a view do less
  *  than a full rebuild:
- *    'photos'     the list itself was replaced
+ *    'photos'     a new list arrived
  *    'edits'      field values moved
  *    'thumbs'     images arrived
  *    'selection'  only the selection changed
@@ -94,7 +94,7 @@ export const timeOf = (dt) => (dt ? dt.slice(11, 19) : null);
 export const seedDay = (p) =>
   (p.file_modified ? dayOf(p.file_modified) : new Date().toISOString().slice(0, 10));
 
-/** `${n} photo` / `${n} photos` — spelled one way everywhere. */
+/** `${n} photo` / `${n} photos`, spelled one way everywhere. */
 export const photoCount = (n) => `${n} photo${n === 1 ? '' : 's'}`;
 
 export function fmtDayLabel(day) {
@@ -125,7 +125,7 @@ export function selected() {
  * The selection gesture, shared by the filmstrip, map and timeline so all three
  * behave identically: ctrl/cmd toggles, shift extends from the last click, a
  * plain click replaces. Extending needs `anchor` (the id last clicked) and
- * `order` (the ids in the order they are shown), so only views with a stable,
+ * `order` (the ids in the order the view shows them), so only views with a stable,
  * visible order offer it.
  */
 export function clickSelect(id, { toggle = false, extend = false, anchor = null, order = null } = {}) {
@@ -199,14 +199,14 @@ export const markClasses = (base, p) =>
     .filter(Boolean).join(' ');
 
 /** The same two markers, onto a node that already exists. Toggling rather than
- *  reassigning leaves whatever class a gesture put there — `drag`, `pulse` —
+ *  reassigning leaves whatever class a gesture put there (`drag`, `pulse`)
  *  alone, which is what makes a repaint safe mid-gesture. */
 export const mark = (el, p) => {
   el.classList.toggle('sel', state.selection.has(p.id));
   el.classList.toggle('edited', isEdited(p));
 };
 
-/** Treat the photo's current values as saved — its new baseline. */
+/** Treat the photo's current values as saved, its new baseline. */
 export const rebase = (p) => { p.orig = pick(p); };
 
 /** Throw away the pending edits and return to the last baseline. */
@@ -241,12 +241,12 @@ function pushUndo(snap) {
 }
 
 /**
- * The only way photo fields change. `mutate` receives `photos` — anything
- * iterable — and edits them in place; everything around it (the undo snapshot,
+ * The only way photo fields change. `mutate` receives `photos`, anything
+ * iterable, and edits them in place. everything around it (the undo snapshot,
  * the re-render) happens here, so no caller can get the order wrong or forget
  * a step.
  *
- * The snapshot is kept only if a field actually moved, so a drag that ends
+ * The journal keeps the snapshot only if a field moved, so a drag that ends
  * where it began costs no undo step. Returns how many photos changed, which is
  * what callers report in a toast.
  */

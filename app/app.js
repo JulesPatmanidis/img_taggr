@@ -1,4 +1,4 @@
-/* img-taggr — wiring: folder loading, inspector, previews, keyboard, save. */
+/* img-taggr wiring: folder loading, inspector, previews, keyboard, save. */
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
@@ -17,7 +17,7 @@ import * as Stage from './stage.js';
 import { stored, store, replay, withCode } from './dom.js';
 import { MULTI, common, mergeDateTime, parseShift, seedDateTime } from './edits.js';
 
-/** Desktop or browser engine — chosen once, at boot. */
+/** Desktop or browser engine, chosen once at boot. */
 const backend = await createBackend();
 const $ = (id) => document.getElementById(id);
 
@@ -72,7 +72,7 @@ async function confirmDiscard(action) {
 }
 
 /* ── Loading a folder ──────────────────────────────────────────── */
-/** `pending` is whatever the backend is producing — a picker or a drop — so
+/** `pending` is whatever the backend is producing, a picker or a drop, so
  *  both routes share one loading path. */
 async function openFolder(pending) {
   $('btnOpen').disabled = true;
@@ -175,7 +175,7 @@ function renderThumbs(sel) {
     el.dataset.id = p.id;
     if (p.thumb) el.style.backgroundImage = `url('${p.thumb}')`;
     else el.dataset.ext = p.ext || '?';
-    el.title = `${p.name} — enlarge`;
+    el.title = `Enlarge ${p.name}`;
     el.setAttribute('aria-label', `Enlarge ${p.name}`);
     box.appendChild(el);
   }
@@ -238,8 +238,8 @@ function renderInspector(edited = editedPhotos().length, stats = folderStats()) 
     for (const id of ['fTz', 'fLat', 'fLon']) setField($(id), null);
     return;
   }
-  // Editing a mixed selection starts from its first photo; only the halves
-  // actually changed are applied, so each photo keeps the rest of its own.
+  // Editing a mixed selection starts from its first photo, and only the halves
+  // that moved reach the others, so each photo keeps the rest of its own.
   const first = sel.find((p) => p.datetime);
   dtField.set(first?.datetime ?? null, {
     mixed: common(sel, (p) => p.datetime) === MULTI,
@@ -252,7 +252,7 @@ function renderInspector(edited = editedPhotos().length, stats = folderStats()) 
 
 /**
  * Apply `fn` to every selected photo that `filter` accepts, as one undo step.
- * Returns how many photos it actually changed, so callers can report it.
+ * Returns how many photos it changed, so callers can report it.
  */
 function applyField(fn, filter = () => true) {
   return applyEdit(selected().filter(filter), (ps) => { for (const p of ps) fn(p); });
@@ -316,7 +316,7 @@ $('btnRevert').addEventListener('click', () => {
 });
 
 /* ── Reveal ────────────────────────────────────────────────────── */
-/* Views never follow the selection on their own — that makes the map jump
+/* Views never follow the selection on their own, because that makes the map jump
    while you work. Double-click, or the inspector buttons, ask for it. */
 function reveal(ids, { map = false, time = false }) {
   Stage.show({ map, time });
@@ -386,8 +386,8 @@ $('btnConfirm').addEventListener('click', async () => {
   const items = editedPhotos().map((p) => ({
     path: p.path,
     // Send the full current state, not a diff. Every write starts from the
-    // pristine source — copy mode re-copies the original, and the browser
-    // re-reads the picked File — so sending only what changed since the last
+    // pristine source (copy mode re-copies the original, and the browser
+    // re-reads the picked File), so sending only what changed since the last
     // save would silently drop edits written in an earlier save.
     ...Object.fromEntries(EDITABLE.map((k) => [k, p[k]])),
     // Distinguish "remove the location" from "there was never one".
@@ -411,7 +411,7 @@ $('btnConfirm').addEventListener('click', async () => {
 
     if (bad.length) {
       console.error('img-taggr write failures', bad);
-      toast(`${ok.length} written · ${bad.length} failed — first error: ${bad[0].error}`, true);
+      toast(`${ok.length} written · ${bad.length} failed. First error: ${bad[0].error}`, true);
     } else {
       toast(describeSave(ok.length, destination));
     }
@@ -446,7 +446,7 @@ function modeRadio(mode) {
   return label;
 }
 
-/** Where the files ended up — which is not always where they were asked to go,
+/** Where the files ended up, which is not always where they were asked to go,
  *  so this reads the destination the backend reports rather than the mode. */
 function describeSave(n, { kind, label }) {
   if (kind === 'download') return `Downloaded ${photoCount(n)} as ${label}`;
@@ -529,7 +529,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ── Render loop ───────────────────────────────────────────────── */
-/** "Saved" only means something once something has actually been written. */
+/** "Saved" means nothing until a write has landed on disk. */
 let savedOnce = false;
 
 function renderProgress(edited, { total, done, percent }) {
@@ -565,7 +565,7 @@ function renderAll(reason) {
   $('mapIntro').classList.toggle('hidden', !introUp);
   $('mapHint').classList.toggle('hidden', introUp);
   $('mapHint').textContent = !state.photos.length ? 'Search for a place, or open a folder of photos'
-    : sel.length ? `${sel.length === 1 ? sel[0].name : `${sel.length} photos`} selected — click the map or drag them here to place them`
+    : sel.length ? `${sel.length === 1 ? sel[0].name : `${sel.length} photos`} selected. Click the map, or drag them here`
       : 'Select photos, then click the map or drag them here';
   $('mapHint').classList.toggle('on', sel.length > 0);
   $('btnInterp').disabled = placed < 2;

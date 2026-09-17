@@ -1,4 +1,4 @@
-/* Filmstrip — the one place photos come from.
+/* Filmstrip: the one place photos come from.
  *
  * Sorted by capture time with undated photos first, so the top of the list is
  * what still needs doing. Filters narrow it to what is missing a date or a
@@ -328,7 +328,7 @@ function ghostFor(ids, grabbed) {
 
 /* ── Sizing ────────────────────────────────────────────────────── */
 /* One drag handle instead of a size menu: "too small" depends on the screen,
-   and the thumbnails scale with the panel so widening it actually shows more. */
+   and the thumbnails scale with the panel, so widening it shows more. */
 const MIN_STRIP = 180;
 const MAX_STRIP = 460;
 

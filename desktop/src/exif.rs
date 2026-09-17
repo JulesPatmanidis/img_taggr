@@ -2,7 +2,7 @@
 //!
 //! There is no second implementation here: reading and writing both go through
 //! `img_taggr_core`, the same code the browser build runs. This file only deals
-//! with what a browser cannot — touching the filesystem.
+//! with what a browser cannot do, touching the filesystem.
 
 use img_taggr_core as core;
 use rayon::prelude::*;
@@ -15,7 +15,7 @@ pub struct Photo {
     pub path: String,
     pub name: String,
     pub ext: String,
-    /// "YYYY-MM-DDTHH:MM:SS" — wall-clock time as recorded, no zone applied.
+    /// "YYYY-MM-DDTHH:MM:SS", wall-clock time as recorded, no zone applied.
     pub datetime: Option<String>,
     /// UTC offset string as stored, e.g. "+02:00".
     pub offset: Option<String>,

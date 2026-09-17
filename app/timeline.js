@@ -1,4 +1,4 @@
-/* Timeline view — one continuous track across the whole set of photos.
+/* Timeline view: one continuous track across the whole set of photos.
  *
  * Wall-clock time runs left to right with day boundaries marked, so a trip is
  * one strip and moving a photo past midnight is an ordinary drag.
@@ -8,11 +8,11 @@
  *   wheel / Ctrl+wheel   pan / zoom around the pointer (a pinch zooms too)
  *   drag the axis        pan
  *
- * The important rule: when the dragged photo is part of a multi-photo selection,
- * the *whole selection shifts by the same delta*, preserving the intervals
- * between shots. That is the fix for the overwhelmingly common real problem —
- * a camera clock that was set wrong for an entire trip. Hold Alt to move a
- * single photo out of formation instead.
+ * When the dragged photo belongs to a multi-photo selection, the *whole
+ * selection shifts by the same delta* and the intervals between shots survive.
+ * That repairs a camera clock set wrong for an entire trip, which is the
+ * failure people bring these photos in with. Hold Alt to move a single photo
+ * out of formation instead.
  */
 
 import {
@@ -303,7 +303,7 @@ function seedFromFiles() {
   applyEdit(list, (ps) => { for (const p of ps) p.datetime = normDt(p.file_modified); });
   batchOpen = false;
   fit();
-  els.toast(`Dated ${photoCount(list.length)} from file timestamps — now drag to correct them`);
+  els.toast(`Dated ${photoCount(list.length)} from file timestamps. Drag to correct them`);
 }
 
 function repaint() {
@@ -317,7 +317,7 @@ function repaint() {
 }
 
 /**
- * Bulk dating is offered for as long as anything is undated. With nothing on
+ * The panel offers bulk dating for as long as anything is undated. With nothing on
  * the track it takes the whole pane, as the empty state; once there are chips
  * under it, it waits behind a header button so it cannot hide them.
  */
@@ -538,7 +538,7 @@ function onPointerMove(ev) {
   layoutDuringDrag();
 }
 
-/** Keep panning while a dragged chip is held against either edge. */
+/** Keep panning while the user holds a dragged chip against either edge. */
 function autoPan(clientX) {
   const r = trackBox();
   const push = clientX < r.left + EDGE_PX ? -1 : clientX > r.right - EDGE_PX ? 1 : 0;

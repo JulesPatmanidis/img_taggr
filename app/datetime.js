@@ -1,4 +1,4 @@
-/* Date-time field — one "YYYY-MM-DD HH:MM:SS" input, edited segment by segment.
+/* Date-time field: one "YYYY-MM-DD HH:MM:SS" input, edited segment by segment.
  *
  * Replaces the native date and time inputs, which commit on every keystroke,
  * render differently in every browser, and whose calendar popups ignore the
@@ -47,7 +47,7 @@ const toDt = (text) => text.replace(' ', 'T');
 
 /**
  * @param input    a text <input>
- * @param opts.onCommit({date, time}) — each "YYYY-MM-DD" / "HH:MM:SS", or null
+ * @param opts.onCommit({date, time}) gets "YYYY-MM-DD" / "HH:MM:SS", or null
  *                 when that half was left alone
  * @returns {set(value, {mixed, fallback})}
  */

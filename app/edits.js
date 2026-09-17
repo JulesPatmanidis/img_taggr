@@ -1,7 +1,7 @@
 /* Pure edit logic: the parsing and merging behind the inspector's fields.
  *
- * Nothing here touches the DOM or the backend, so it can be imported — and
- * tested — in plain Node. Anything in app.js that reads a value and works out
+ * Nothing here touches the DOM or the backend, so Node can import it and test
+ * it in plain JavaScript. Anything in app.js that reads a value and works out
  * what the photos should become belongs in this file; app.js keeps the wiring.
  */
 

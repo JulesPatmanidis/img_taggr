@@ -1,4 +1,4 @@
-/* Split stage — map above, timeline below, so a photo's place and time are on
+/* Split stage: map above, timeline below, so a photo's place and time are on
  * screen together. Either pane can take the whole stage for a while, and the
  * divider between them drags.
  */
@@ -35,7 +35,7 @@ export function toggleMax(pane) {
     const { name, key } = PANES[b.dataset.pane];
     b.setAttribute('aria-pressed', String(on));
     b.setAttribute('aria-label', `${on ? 'Restore' : 'Enlarge'} ${name}`);
-    b.title = `${on ? 'Restore' : 'Enlarge'} ${name} — ${key.toUpperCase()}`;
+    b.title = `${on ? 'Restore' : 'Enlarge'} ${name} (${key.toUpperCase()})`;
   }
   // A hidden pane skips renders, so catch the one coming back up.
   if (mapShown()) MapView.render();

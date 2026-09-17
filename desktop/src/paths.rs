@@ -1,5 +1,5 @@
 //! Output-path helpers. Kept apart from the Tauri command layer so the rules
-//! that decide *where a file lands* can be tested on their own — these run in
+//! that decide *where a file lands* stand on their own, so these run in
 //! the one code path that touches the user's disk.
 
 use std::path::{Path, PathBuf};

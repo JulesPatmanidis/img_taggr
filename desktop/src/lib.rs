@@ -1,4 +1,4 @@
-//! img-taggr — offline photo time & location metadata editor.
+//! img-taggr: offline photo time and location metadata editor.
 //!
 //! The Rust side owns the filesystem and exiftool; the webview owns interaction.
 //! Nothing here reaches the network, and no image bytes leave the machine.

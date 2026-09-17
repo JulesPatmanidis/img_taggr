@@ -2,7 +2,7 @@
 //!
 //! Decodes with the `image` crate and returns a small JPEG as a data URL, so
 //! the webview never needs filesystem access. HEIC has no decoder here and
-//! yields `None`, exactly as it does in the browser — the UI shows a labelled
+//! yields `None`, as it does in the browser, and the UI shows a labelled
 //! placeholder either way.
 
 use base64::Engine;

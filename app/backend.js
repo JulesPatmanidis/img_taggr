@@ -3,8 +3,8 @@
  * The map and timeline views never learn which backend they are driving. Two
  * implementations satisfy the same interface:
  *
- *   tauri — desktop: real folders, edits originals or copies
- *   web   — browser: files the user picks, download or File System Access
+ *   tauri   desktop, real folders, edits originals or copies
+ *   web     browser, files the user picks, download or File System Access
  *
  * Both run the same metadata engine (img-taggr-core); they differ only in how
  * files reach it.
@@ -24,9 +24,9 @@
  *   suggestOutput(label)    -> string
  *   save(items, {mode, outDir})
  *                           -> {results: [{path, ok, error}], destination}
- *                              destination says where the files actually
- *                              landed, which is not always where they were
- *                              asked to go — see SAVE_MODES below.
+ *                              destination says where the files landed,
+ *                              which is not always where they were asked
+ *                              to go (see SAVE_MODES below).
  */
 
 /* ── Save modes ────────────────────────────────────────────────── */
@@ -69,7 +69,7 @@ export function saveMode(id) {
   return mode;
 }
 
-/** The modes a backend can actually perform, in the order they are offered. */
+/** The modes a backend can perform, in the order the save sheet lists them. */
 export const modesFor = (caps) => SAVE_MODES.filter((m) => caps.saveModes.includes(m.id));
 
 /** Long edge of a thumbnail, in pixels. The desktop engine renders to the same
@@ -96,7 +96,7 @@ function tauriBackend() {
   return {
     id: 'tauri',
     caps: {
-      // Save modes this backend can perform, in the order they are offered.
+      // Save modes this backend can perform, in the order the save sheet lists.
       saveModes: ['copy', 'backup', 'inplace'],
       outputFolder: true,
     },
@@ -184,7 +184,7 @@ async function webBackend() {
     try {
       meta = JSON.parse(wasm.read_meta(bytes, file.name) || '{}');
     } catch {
-      // A file we cannot parse still belongs in the list — the user may be
+      // A file we cannot parse still belongs in the list, since the user may be
       // here precisely because its metadata is broken.
     }
     return {
@@ -196,7 +196,7 @@ async function webBackend() {
       lat: meta.lat ?? null,
       lon: meta.lon ?? null,
       orientation: meta.orientation ?? 1,
-      // Browsers expose lastModified, the web equivalent of file mtime — the
+      // Browsers expose lastModified, the web equivalent of file mtime, and the
       // fallback the timeline seeds undated photos from.
       file_modified: file.lastModified
         ? new Date(file.lastModified).toISOString().slice(0, 19)
@@ -309,8 +309,8 @@ async function webBackend() {
           const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
           input.onchange = () => finish(input.files);
           input.oncancel = () => finish(null);
-          // `cancel` is not fired for a *directory* picker by every browser —
-          // Brave is one that does not — and this promise is what the whole
+          // Not every browser fires `cancel` for a *directory* picker (Brave
+          // does not), and this promise is what the whole
           // open waits on. Without a second way out, dismissing the chooser
           // hangs the open for ever: the folder label sits on "Reading…" and
           // the button stays disabled, so the app looks dead from then on.
@@ -462,14 +462,14 @@ async function webBackend() {
           }
           return { results, destination: wroteTo(folder) };
         } catch (e) {
-          // Permission withdrawn or quota hit — fall through to the download
+          // Permission withdrawn or quota hit, so fall through to the download
           // path rather than losing the user's work.
           console.warn('direct write failed, falling back to download', e);
         }
       }
 
-      // The files are written, but not where they were asked to go. Say so, or
-      // the message names a folder the user will not find them in.
+      // The write landed, but not where the user asked. Say so, or the message
+      // names a folder they will not find the files in.
       const zip = `${folder}.zip`;
       downloadZip(written, zip);
       return { results, destination: downloaded(zip) };

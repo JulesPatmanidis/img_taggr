@@ -1,4 +1,4 @@
-/* img-taggr — a minimal shell, dark or light to match the system.
+/* img-taggr: a minimal shell, dark or light to match the system.
    Indigo is the one accent and it always means "selected". Amber always means
    "edited but not saved". Green and grey only ever say whether a photo is
    finished. Nothing else is allowed to be colourful, so the photos stay the
@@ -299,7 +299,7 @@ main { position: relative; flex: 1; display: flex; min-height: 0; }
 }
 /* Browsers cannot decode every format we can edit (Chrome has no HEIC or TIFF
    decoder). Name the format so an empty tile reads as a missing preview rather
-   than a broken image — the same treatment on filmstrip tiles and chips. */
+   than a broken image. Filmstrip tiles and chips get the same treatment. */
 .card .th[data-ext]:not([style*="url"])::after,
 .chip[data-ext]:not([style*="url"])::after {
   content: attr(data-ext);
@@ -874,7 +874,7 @@ button.insThumb:hover { border-color: var(--accent-hover); }
   background: var(--tile) center/contain no-repeat;
 }
 .peekImg:not([data-ext=""])::after {
-  content: attr(data-ext) " — no preview"; position: absolute; inset: 0;
+  content: attr(data-ext) ", no preview"; position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted);
 }
 .peekCap { display: flex; flex-direction: column; gap: 1px; padding: 6px 3px 1px; min-width: 0; }

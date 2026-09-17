@@ -1,4 +1,4 @@
-/* Map view — place and move photos geographically.
+/* Map view: place and move photos geographically.
  *
  * Interactions:
  *   click empty map      place every selected photo at that point
@@ -200,7 +200,7 @@ function paint(m, p) {
 /** Rigid-body drag state, captured on dragstart. */
 let drag = null;
 /** Id of the marker being dragged. Set before any render can run, so render()
- *  knows to leave that marker's icon and position alone — swapping the icon of
+ *  knows to leave that marker's icon and position alone, because swapping the icon of
  *  a marker mid-drag detaches the very element Leaflet is dragging. */
 let dragId = null;
 
@@ -305,8 +305,8 @@ function drawRoute(live) {
 function paintPin(m, p) {
   if (p.id === dragId) return;
   if (!drag) {
-    // A fanned-out pin sits at its spot in the fan; its real place is kept
-    // aside by the cluster plugin.
+    // A fanned-out pin sits at its spot in the fan, and the cluster plugin
+    // holds its real position aside.
     const cur = m._preSpiderfyLatlng ?? m.getLatLng();
     if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
   }
@@ -389,7 +389,7 @@ export function interpolate() {
     // is well placed but the selection happens not to be.
     return { ok: false, msg: state.selection.size >= 2
       ? 'Fewer than two of the selected photos have a location. Clear the selection to interpolate across the whole folder.'
-      : 'Place at least two photos on the map first — interpolation needs a route to follow.' };
+      : 'Place at least two photos on the map first. Interpolation needs a route to follow.' };
   }
 
   const filled = applyEdit(timed, () => {
@@ -412,7 +412,7 @@ export function interpolate() {
   const outside = timed.filter(isUnplaced).length;
   if (!filled) {
     return { ok: false, msg: outside
-      ? `Nothing to fill — the ${outside} un-placed photo${outside > 1 ? 's fall' : ' falls'} outside the placed range.`
+      ? `Nothing to fill. The ${outside} un-placed photo${outside > 1 ? 's fall' : ' falls'} outside the placed range.`
       : 'Every photo in range already has a location.' };
   }
   return {

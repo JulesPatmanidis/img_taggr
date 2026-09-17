@@ -1,4 +1,4 @@
-//! The metadata engine — the single implementation behind both targets.
+//! The metadata engine, the one implementation behind both targets.
 //!
 //! The desktop app and the browser build share this crate, so "save" cannot
 //! mean two different things: there is one tag list, one format-detection rule
@@ -109,7 +109,7 @@ pub fn write_tags(
     let mut out = buf;
 
     // A file carrying no EXIF at all is the normal case for screenshots and
-    // exports — precisely what this tool exists to fix — so fall back to a
+    // exports, which is what this tool exists to fix, so fall back to a
     // fresh metadata block instead of refusing the file.
     let mut md = Metadata::new_from_vec(&out, ft).unwrap_or_else(|_| Metadata::new());
 
@@ -155,7 +155,7 @@ pub fn write_tags(
 }
 
 /// What a photo carries, as the views need it. Every field is optional because
-/// a file may legitimately have none of them — that is why this tool exists.
+/// a file may have none of them, which is why this tool exists.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Meta {
     /// "YYYY-MM-DDTHH:MM:SS" wall clock, no zone applied.
