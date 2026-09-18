@@ -48,9 +48,7 @@
 /** Extensions the desktop picker offers. The browser asks the wasm engine for
  *  this list at runtime; the desktop dialog needs it before any engine call, so
  *  it is spelled out here and a test pins it to both `SUPPORTED` in
- *  `desktop/src/lib.rs` and `WRITABLE` in `engine/src/lib.rs`. A picker that
- *  offers a format the engine cannot write hands the user a file that fails at
- *  save; one that hides a format it can write is invisible. */
+ *  `desktop/src/lib.rs` and `WRITABLE` in `engine/src/lib.rs`. */
 export const IMAGE_EXTS = [
   'jpg', 'jpeg', 'heic', 'heif', 'png', 'tif', 'tiff', 'webp',
 ];
@@ -76,12 +74,9 @@ export function freeName(name, taken) {
 }
 
 /**
- * The same, but asking `dir` what it already holds as well as `taken`.
- *
- * Saving twice, or naming a folder that turns out to exist, must not quietly
- * replace what is in it. The output folder can be any folder the user typed a
- * name for, including one holding their originals, so "is this name free" is a
- * question only the directory can answer.
+ * The same, but asking `dir` what it already holds as well as `taken`, so the
+ * name it returns is free in both. A check the directory cannot answer counts
+ * as taken.
  */
 export async function freeNameIn(dir, name, taken) {
   const dot = name.lastIndexOf('.');
@@ -309,9 +304,7 @@ async function webBackend() {
   }
 
   /** How long a closed chooser gets to produce files before the add stops
-   *  waiting on it. Long enough for someone to answer Chromium's upload
-   *  confirmation without the wait being written off, short enough that a
-   *  dismissed dialog does not leave the buttons disabled. */
+   *  waiting on it. */
   const PICK_GRACE_MS = 1200;
 
   /** What a FileList from the input fallback becomes. A folder pick says where
@@ -324,31 +317,17 @@ async function webBackend() {
     return ingest(files, label);
   }
 
-  /** The input from the last fallback pick, held in case its files are still
-   *  coming. Only one pick is ever outstanding, so the next one clears it. */
+  /** The input from the last fallback pick, kept while its files may still be
+   *  coming. Only one pick is outstanding at a time, so the next one clears it. */
   let strayInput = null;
 
   /**
-   * The `<input type=file>` fallback, for browsers with no File System Access
-   * API. Resolves to a FileList, or null when nothing arrived in time.
-   *
-   * "In time" is the whole difficulty. Chromium confirms a *folder* upload in a
-   * second dialog that opens after the chooser has closed, so the page has its
-   * focus back while the user is still reading that confirmation. Treating
-   * focus as the end of the pick therefore loses every folder that is not
-   * confirmed within the grace period, silently: the files land on an input
-   * nobody is listening to any more. That is what made folder adds do nothing
-   * at all on Windows, where a single photo, which is confirmed by no dialog,
-   * worked fine.
-   *
-   * So giving up stops the waiting, not the listening. The input stays in the
-   * document with its handler attached, and files that turn up afterwards are
-   * announced the way a drop is, since photos arriving with nobody waiting for
-   * them is exactly what a drop already is.
+   * Opens a chooser through a hidden `<input type=file>`, for browsers with no
+   * File System Access API. Resolves to the chosen FileList, or to null once
+   * the grace period passes with nothing chosen. Files that arrive after that
+   * are announced instead, the way a drop is.
    */
   function pickViaInput({ directory }) {
-    // A pick that never produced anything has nothing left to say once another
-    // one starts.
     strayInput?.remove();
     const input = document.createElement('input');
     strayInput = input;
@@ -361,7 +340,6 @@ async function webBackend() {
 
     return new Promise((resolve) => {
       let waiting = true;
-      /** Answer the add that is waiting, if it still is. */
       const answer = (v) => {
         if (!waiting) return false;
         waiting = false;
@@ -380,12 +358,9 @@ async function webBackend() {
       };
       input.oncancel = () => { answer(null); close(); };
 
-      // Brave fires no `cancel` for a directory chooser, so without a second
-      // way out a dismissed dialog hangs the add for ever: the source label
-      // sits on "Reading…" and the buttons stay disabled, and the app looks
-      // dead from then on. Focus coming back means the chooser has closed, one
-      // way or the other; `change` above covers the case where it closed on a
-      // real pick that is still being confirmed.
+      // Brave fires no `cancel` for a directory chooser, and Chromium opens its
+      // upload confirmation only after focus returns, so no single event marks
+      // the end of a pick: focus bounds the wait, `change` above still delivers.
       window.addEventListener('focus', () => {
         setTimeout(() => {
           if (input.files?.length) { answer(input.files); close(); return; }

@@ -108,5 +108,9 @@ does).
   binary that silently disagrees with the source is worse than a build step.
 - The only network call the app makes is place search, to
   `photon.komoot.io`. Keep it that way, and keep it optional.
-- Comments explain why, not what. Several of the existing ones record a
-  failure that was hard to find; leave those in place.
+- Doc comments say *what*: the contract of a module, function or constant, for
+  a reader who will never open the body. Inline comments cover what is left,
+  and only where the code cannot speak for itself, such as a platform quirk the
+  shape of the code is working around. Keep those to a sentence naming the
+  quirk; the incident that led to it belongs in the commit message, where blame
+  can find it.
