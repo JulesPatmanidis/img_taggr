@@ -25,7 +25,9 @@
  *                           -> {label, photos, unreadable, activate?} | null
  *                              the app calls activate() once it takes the
  *                              photos, so a declined source changes nothing
- *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>)
+ *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>), for a
+ *                           drop and for a chooser whose files arrived after
+ *                           the add stopped waiting for them
  *   forget(ids)             the app dropped these photos; release them
  *   reset()                 the app emptied the session
  *   guardClose({dirty, confirm}) ask before closing with unsaved edits
@@ -217,6 +219,9 @@ async function webBackend() {
   const files = new Map();
   /** Directory handle when the browser supports writing back in place. */
   let outHandle = null;
+  /** Where photos nobody is waiting for go in: a drop, or a chooser that
+   *  produced its files after the add gave up. Set by watchDrop. */
+  let announce = null;
   /** photo id -> object URL for the lightbox. */
   const previews = new Map();
   const canWriteFiles = typeof window.showDirectoryPicker === 'function';
@@ -303,37 +308,91 @@ async function webBackend() {
       .map((e) => new Promise((ok, fail) => e.file(ok, fail))));
   }
 
+  /** How long a closed chooser gets to produce files before the add stops
+   *  waiting on it. Long enough for someone to answer Chromium's upload
+   *  confirmation without the wait being written off, short enough that a
+   *  dismissed dialog does not leave the buttons disabled. */
+  const PICK_GRACE_MS = 1200;
+
+  /** What a FileList from the input fallback becomes. A folder pick says where
+   *  it came from only in the relative path of its first file. */
+  function fromInput(files, directory) {
+    if (!files?.length) return null;
+    const label = directory
+      ? files[0].webkitRelativePath?.split('/')[0] || 'photos'
+      : 'photos';
+    return ingest(files, label);
+  }
+
+  /** The input from the last fallback pick, held in case its files are still
+   *  coming. Only one pick is ever outstanding, so the next one clears it. */
+  let strayInput = null;
+
   /**
    * The `<input type=file>` fallback, for browsers with no File System Access
-   * API. Resolves to a FileList or null when the chooser was dismissed.
+   * API. Resolves to a FileList, or null when nothing arrived in time.
+   *
+   * "In time" is the whole difficulty. Chromium confirms a *folder* upload in a
+   * second dialog that opens after the chooser has closed, so the page has its
+   * focus back while the user is still reading that confirmation. Treating
+   * focus as the end of the pick therefore loses every folder that is not
+   * confirmed within the grace period, silently: the files land on an input
+   * nobody is listening to any more. That is what made folder adds do nothing
+   * at all on Windows, where a single photo, which is confirmed by no dialog,
+   * worked fine.
+   *
+   * So giving up stops the waiting, not the listening. The input stays in the
+   * document with its handler attached, and files that turn up afterwards are
+   * announced the way a drop is, since photos arriving with nobody waiting for
+   * them is exactly what a drop already is.
    */
   function pickViaInput({ directory }) {
+    // A pick that never produced anything has nothing left to say once another
+    // one starts.
+    strayInput?.remove();
     const input = document.createElement('input');
+    strayInput = input;
     input.type = 'file';
     input.multiple = true;
     if (directory) input.webkitdirectory = true;
     input.accept = exts.map((e) => `.${e}`).join(',');
     input.style.display = 'none';
     document.body.append(input);
+
     return new Promise((resolve) => {
-      let settled = false;
-      const finish = (v) => {
-        if (settled) return;
-        settled = true;
-        input.remove();
+      let waiting = true;
+      /** Answer the add that is waiting, if it still is. */
+      const answer = (v) => {
+        if (!waiting) return false;
+        waiting = false;
         resolve(v);
+        return true;
       };
-      input.onchange = () => finish(input.files);
-      input.oncancel = () => finish(null);
-      // Not every browser fires `cancel` for a *directory* picker (Brave does
-      // not), and this promise is what the whole add waits on. Without a second
-      // way out, dismissing the chooser hangs it for ever: the source label
-      // sits on "Reading…" and the button stays disabled, so the app looks dead
-      // from then on. Focus coming back means the chooser has closed; give
-      // `change` a moment to land first, and if nothing arrived it was dismissed.
+      const close = () => {
+        if (strayInput === input) strayInput = null;
+        input.remove();
+      };
+
+      input.onchange = () => {
+        const { files } = input;
+        if (!answer(files) && files?.length) announce?.(fromInput(files, directory));
+        close();
+      };
+      input.oncancel = () => { answer(null); close(); };
+
+      // Brave fires no `cancel` for a directory chooser, so without a second
+      // way out a dismissed dialog hangs the add for ever: the source label
+      // sits on "Reading…" and the buttons stay disabled, and the app looks
+      // dead from then on. Focus coming back means the chooser has closed, one
+      // way or the other; `change` above covers the case where it closed on a
+      // real pick that is still being confirmed.
       window.addEventListener('focus', () => {
-        setTimeout(() => finish(input.files?.length ? input.files : null), 500);
+        setTimeout(() => {
+          if (input.files?.length) { answer(input.files); close(); return; }
+          answer(null);
+        }, PICK_GRACE_MS);
       }, { once: true });
+
       input.click();
     });
   }
@@ -395,10 +454,7 @@ async function webBackend() {
         return ingest(await filesIn(dir), dir.name, dir);
       }
 
-      const chosen = await pickViaInput({ directory: true });
-      if (!chosen?.length) return null;
-      const root = chosen[0].webkitRelativePath?.split('/')[0] || 'photos';
-      return ingest(chosen, root);
+      return fromInput(await pickViaInput({ directory: true }), true);
     },
 
     async pickFiles() {
@@ -417,12 +473,12 @@ async function webBackend() {
         return ingest(await Promise.all(handles.map((h) => h.getFile())), 'photos');
       }
 
-      const chosen = await pickViaInput({ directory: false });
-      if (!chosen?.length) return null;
-      return ingest(chosen, 'photos');
+      return fromInput(await pickViaInput({ directory: false }), false);
     },
 
     watchDrop({ hover, drop }) {
+      // Also the way a late chooser gets its photos in; see pickViaInput.
+      announce = drop;
       // Internal drags use pointer events, so a Files payload is always from outside.
       const isFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes('Files');
       let depth = 0;
