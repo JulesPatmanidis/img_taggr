@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   state, applyEdit, setOnChange, undo, redo, isEdited, rebase, resetHistory,
   sortPhotos, dtToMs, msToDt, normDt,
-  emit, isRepaint, clickSelect, setPhotos,
+  emit, isRepaint, clickSelect, addPhotos, removePhotos, clearPhotos,
 } from '../app/state.js';
 
 /** A folder of photos, plus a count of the re-renders they trigger. */
@@ -228,42 +228,118 @@ test('isRepaint: only selection and thumbs skip the layout', () => {
   assert.equal(isRepaint(undefined), false);
 });
 
-/* ── Sessions ──────────────────────────────────────────────────── */
+/* ── Sessions and sources ──────────────────────────────────────── */
 
-test('setPhotos: each list gets its own session token', () => {
+/** A loose photo record, as a backend hands one over. */
+const mk = (id, extra = {}) => {
+  const p = { id, name: `${id}.jpg`, datetime: null, offset: null, lat: null, lon: null, ...extra };
+  rebase(p);
+  return p;
+};
+
+test('clearPhotos: each session gets its own token', () => {
   folder({});
-  const first = setPhotos([]);
-  const second = setPhotos([]);
+  const first = clearPhotos();
+  const second = clearPhotos();
   assert.equal(second, first + 1);
   assert.equal(state.session, second);
 });
 
-test('setPhotos: two loads of the same folder still differ', () => {
+test('clearPhotos: two loads of the same folder still differ', () => {
   // The bug this exists for: the old token was the folder label, and two loose
   // drops carry the same label, so the first load never learned it was stale.
   folder({});
-  const a = setPhotos([{ id: 'x', name: 'x.jpg', orig: {} }]);
-  const b = setPhotos([{ id: 'x', name: 'x.jpg', orig: {} }]);
+  const a = clearPhotos();
+  addPhotos([mk('x')], 'trip');
+  const b = clearPhotos();
   assert.notEqual(a, b);
 });
 
-test('setPhotos: the outgoing list takes its selection and journal with it', () => {
+test('clearPhotos: the outgoing list takes its selection, journal and sources with it', () => {
   folder({ lat: 1 });
   applyEdit(state.photos, (ps) => { ps[0].lat = 2; });
   state.selection.add('p0');
-  setPhotos([]);
+  clearPhotos();
+  assert.deepEqual(state.photos, []);
+  assert.deepEqual(state.sources, []);
   assert.equal(state.selection.size, 0);
   assert.equal(state.undo.length, 0);
   assert.equal(state.redo.length, 0);
 });
 
-test('setPhotos: the new list arrives sorted', () => {
-  folder({});
-  const mk = (id, datetime) => {
-    const p = { id, name: `${id}.jpg`, datetime, offset: null, lat: null, lon: null };
-    rebase(p);
-    return p;
-  };
-  setPhotos([mk('b', '2023-01-02T00:00:00'), mk('a', '2023-01-01T00:00:00'), mk('u', null)]);
+test('addPhotos: the new photos arrive sorted into the list', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('b', { datetime: '2023-01-02T00:00:00' }),
+    mk('a', { datetime: '2023-01-01T00:00:00' }), mk('u')], 'trip');
   assert.deepEqual(state.photos.map((p) => p.id), ['u', 'a', 'b']);
+});
+
+test('addPhotos: a second source joins the first rather than replacing it', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('a')], '/trip');
+  state.selection.add('a');
+  const added = addPhotos([mk('b')], '/scans');
+  assert.deepEqual(added.map((p) => p.id), ['b']);
+  assert.deepEqual(state.photos.map((p) => p.id).sort(), ['a', 'b']);
+  assert.deepEqual(state.sources, ['/trip', '/scans']);
+  // Adding is not a fresh start, so nothing the user had set up is cleared.
+  assert.deepEqual([...state.selection], ['a']);
+});
+
+test('addPhotos: a photo already loaded is not added twice', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('a'), mk('b')], '/trip');
+  const added = addPhotos([mk('b'), mk('c')], '/trip');
+  assert.deepEqual(added.map((p) => p.id), ['c']);
+  assert.deepEqual(state.photos.map((p) => p.id).sort(), ['a', 'b', 'c']);
+  // The same folder added twice is still one source.
+  assert.deepEqual(state.sources, ['/trip']);
+});
+
+test('addPhotos: shot numbers are handed out once and never move', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('b'), mk('a')], '/trip');
+  const seqOf = (id) => state.photos.find((p) => p.id === id).seq;
+  // Within a batch the badge follows filename order, which is shot order.
+  assert.equal(seqOf('a'), 1);
+  assert.equal(seqOf('b'), 2);
+  addPhotos([mk('c')], '/scans');
+  assert.equal(seqOf('c'), 3);
+  // The photos that were already here keep the numbers the user has been reading.
+  assert.equal(seqOf('a'), 1);
+  assert.equal(seqOf('b'), 2);
+});
+
+test('addPhotos: a batch of nothing new records no source', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('a')], '/trip');
+  assert.deepEqual(addPhotos([mk('a')], '/scans'), []);
+  assert.deepEqual(state.sources, ['/trip']);
+});
+
+test('removePhotos: the photos and their selection go, the rest stays', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('a'), mk('b'), mk('c')], '/trip');
+  state.selection.add('a');
+  state.selection.add('b');
+  assert.equal(removePhotos(['a', 'missing']), 1);
+  assert.deepEqual(state.photos.map((p) => p.id).sort(), ['b', 'c']);
+  assert.deepEqual([...state.selection], ['b']);
+});
+
+test('removePhotos: undo still works on what is left, and brings nothing back', () => {
+  folder();
+  clearPhotos();
+  addPhotos([mk('a', { lat: 1 }), mk('b', { lat: 1 })], '/trip');
+  applyEdit(state.photos, (ps) => { for (const p of ps) p.lat = 2; });
+  removePhotos(['a']);
+  assert.equal(undo(), true);
+  assert.deepEqual(state.photos.map((p) => p.id), ['b']);
+  assert.equal(state.photos[0].lat, 1);
 });

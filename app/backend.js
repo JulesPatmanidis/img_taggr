@@ -3,8 +3,8 @@
  * The map and timeline views never learn which backend they are driving. Two
  * implementations satisfy the same interface:
  *
- *   tauri   desktop, real folders, edits originals or copies
- *   web     browser, files the user picks, download or File System Access
+ *   tauri   desktop, folders and files anywhere on disk
+ *   web     browser, folders and files the user picks
  *
  * Both run the same metadata engine (img-taggr-core); they differ only in how
  * files reach it.
@@ -12,75 +12,100 @@
  * They differ in what they *can* do, so each advertises `caps` and the UI
  * adapts rather than offering controls that cannot work.
  *
+ * Saving has one shape everywhere: the tagged files are written as a new set
+ * into a folder of their own, and the sources are never opened for writing.
+ * That is why there are no save modes left to choose between, and why photos
+ * from any number of folders can sit in one session.
+ *
  * Interface:
- *   id, caps, envWarning()
- *   pickSource()            -> {label, photos, activate?} | null
+ *   id, envWarning()
+ *   caps.outputFolder       can write into a folder at all (else: a download)
+ *   caps.outputPaths        the output field holds a full path, not a name
+ *   pickFolder() / pickFiles()
+ *                           -> {label, photos, unreadable, activate?} | null
  *                              the app calls activate() once it takes the
  *                              photos, so a declined source changes nothing
  *   watchDrop({hover, drop}) calls drop(Promise<{label, photos} | null>)
+ *   forget(ids)             the app dropped these photos; release them
+ *   reset()                 the app emptied the session
  *   guardClose({dirty, confirm}) ask before closing with unsaved edits
  *   loadThumb(photo)        -> data URL | null
  *   loadPreview(photo)      -> URL of a full-size image | null
  *   suggestOutput(label)    -> string
- *   save(items, {mode, outDir})
- *                           -> {results: [{path, ok, error}], destination}
+ *   outputParent()          -> name of the folder the new one is made in, or null
+ *   pickOutput()            -> {path} | {parent} | null
+ *                              `path` names the output folder outright,
+ *                              `parent` only says what it will be made inside
+ *   save(items, {outDir})   -> {results: [{path, ok, error}], destination}
  *                              destination says where the files landed,
  *                              which is not always where they were asked
- *                              to go (see SAVE_MODES below).
+ *                              to go (a browser without write access
+ *                              downloads a ZIP instead).
  */
 
-/* ── Save modes ────────────────────────────────────────────────── */
-
-/**
- * Every save mode there is, declared once. The radio list is rendered from
- * this, and `desktop/src/lib.rs` matches the same ids exhaustively, so a mode
- * cannot exist in one half of the app and not the other.
- *
- * `needsOutDir`     the mode writes somewhere else, so it needs a destination
- * `writesOriginals` the source files are opened for writing
- * `destructive`     ...and not recoverable afterwards
- */
-export const SAVE_MODES = [
-  {
-    id: 'copy',
-    label: 'Write copies',
-    hint: 'Originals untouched; tagged files go to a new folder.',
-    needsOutDir: true, writesOriginals: false, destructive: false,
-  },
-  {
-    id: 'backup',
-    label: 'Edit in place, keep backups',
-    hint: 'Each original is preserved as `name.ext_original`.',
-    needsOutDir: false, writesOriginals: true, destructive: false,
-  },
-  {
-    id: 'inplace',
-    label: 'Edit in place',
-    hint: 'Overwrites originals. No undo once written.',
-    needsOutDir: false, writesOriginals: true, destructive: true,
-  },
+/** Extensions the desktop picker offers. The browser asks the wasm engine for
+ *  this list at runtime; the desktop dialog needs it before any engine call, so
+ *  it is spelled out here and a test pins it to both `SUPPORTED` in
+ *  `desktop/src/lib.rs` and `WRITABLE` in `engine/src/lib.rs`. A picker that
+ *  offers a format the engine cannot write hands the user a file that fails at
+ *  save; one that hides a format it can write is invisible. */
+export const IMAGE_EXTS = [
+  'jpg', 'jpeg', 'heic', 'heif', 'png', 'tif', 'tiff', 'webp',
 ];
-
-/** The mode with this id. Unknown ids are a programming error, not input: the
- *  destructive mode must never be something you reach by mistyping. */
-export function saveMode(id) {
-  const mode = SAVE_MODES.find((m) => m.id === id);
-  if (!mode) throw new Error(`unknown save mode: ${id}`);
-  return mode;
-}
-
-/** The modes a backend can perform, in the order the save sheet lists them. */
-export const modesFor = (caps) => SAVE_MODES.filter((m) => caps.saveModes.includes(m.id));
 
 /** Long edge of a thumbnail, in pixels. The desktop engine renders to the same
  *  number in desktop/src/thumb.rs, so a card looks the same in both builds. A
  *  card is at most 132 CSS px wide, which this covers on a 3x display. */
 const THUMB_EDGE = 384;
 
+/* ── Output names ──────────────────────────────────────────────── */
+/* The output folder is flat, so two sources holding an `IMG_1.jpg` must not
+   become one file. `create_dest` in `desktop/src/paths.rs` answers the same
+   question for the desktop build, against the real filesystem. */
+
+/** `name`, or `name (1)`, `name (2)`… — the first the caller has not taken. */
+export function freeName(name, taken) {
+  const dot = name.lastIndexOf('.');
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+  let out = name;
+  for (let n = 1; taken.has(out); n++) out = `${stem} (${n})${ext}`;
+  taken.add(out);
+  return out;
+}
+
+/**
+ * The same, but asking `dir` what it already holds as well as `taken`.
+ *
+ * Saving twice, or naming a folder that turns out to exist, must not quietly
+ * replace what is in it. The output folder can be any folder the user typed a
+ * name for, including one holding their originals, so "is this name free" is a
+ * question only the directory can answer.
+ */
+export async function freeNameIn(dir, name, taken) {
+  const dot = name.lastIndexOf('.');
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+  for (let n = 0; n < 10_000; n++) {
+    const candidate = n === 0 ? name : `${stem} (${n})${ext}`;
+    if (taken.has(candidate)) continue;
+    try {
+      await dir.getFileHandle(candidate);
+    } catch (e) {
+      // Only "there is nothing here by that name" means the name is free. Any
+      // other refusal (a directory sits there, permission withdrawn) means it
+      // is taken as far as we are concerned.
+      if (e?.name === 'NotFoundError') {
+        taken.add(candidate);
+        return candidate;
+      }
+      continue;
+    }
+  }
+  throw new Error('too many files of the same name in the output folder');
+}
+
 /** Where a save put the files, for the message afterwards. */
 const wroteTo = (label) => ({ kind: 'folder', label });
 const downloaded = (label) => ({ kind: 'download', label });
-const editedOriginals = () => ({ kind: 'originals', label: null });
 
 /* ── Desktop (Tauri) ───────────────────────────────────────────── */
 
@@ -88,28 +113,40 @@ function tauriBackend() {
   const invoke = window.__TAURI__.core.invoke;
   const dialog = window.__TAURI__.dialog;
 
-  async function scan(path) {
-    const res = await invoke('scan_folder', { path, recursive: true });
+  /** Read a batch of sources. Folders and loose files go down the same path,
+   *  so picking a folder, dropping a mixture and adding one more photo are all
+   *  the same call. */
+  async function scan(paths) {
+    const list = [paths].flat().filter(Boolean);
+    if (!list.length) return null;
+    const res = await invoke('scan_paths', { paths: list, recursive: true });
     return { label: res.folder, photos: res.photos, unreadable: res.unreadable };
   }
 
   return {
     id: 'tauri',
     caps: {
-      // Save modes this backend can perform, in the order the save sheet lists.
-      saveModes: ['copy', 'backup', 'inplace'],
       outputFolder: true,
+      // The output field holds a full path here, which the picker fills in.
+      outputPaths: true,
     },
 
     async envWarning() {
       return null; // nothing to install: the engine is compiled in
     },
 
-    async pickSource() {
-      const picked = await dialog.open({
-        directory: true, multiple: false, title: 'Choose a photo folder',
-      });
-      return picked ? scan(picked) : null;
+    async pickFolder() {
+      return scan(await dialog.open({
+        directory: true, multiple: true, title: 'Add a photo folder',
+      }));
+    },
+
+    async pickFiles() {
+      return scan(await dialog.open({
+        multiple: true,
+        title: 'Add photos',
+        filters: [{ name: 'Images', extensions: IMAGE_EXTS }],
+      }));
     },
 
     watchDrop({ hover, drop }) {
@@ -119,11 +156,15 @@ function tauriBackend() {
         else if (payload.type === 'leave') hover(false);
         else if (payload.type === 'drop') {
           hover(false);
-          // Anything but a folder is reported by the scan itself.
-          if (payload.paths.length) drop(scan(payload.paths[0]));
+          // Folders and files can arrive in one drop; the scan sorts them out.
+          if (payload.paths.length) drop(scan(payload.paths));
         }
       });
     },
+
+    // Nothing is held open between calls: every read goes back to the file.
+    forget() {},
+    reset() {},
 
     loadThumb(photo) {
       return invoke('load_thumb', { path: photo.path, orientation: photo.orientation ?? 1 });
@@ -137,8 +178,13 @@ function tauriBackend() {
       return invoke('suggest_out_dir', { folder: label });
     },
 
+    outputParent() {
+      return null; // the field already says where in full
+    },
+
     async pickOutput() {
-      return dialog.open({ directory: true, multiple: false, title: 'Output folder' });
+      const dir = await dialog.open({ directory: true, multiple: false, title: 'Output folder' });
+      return dir ? { path: dir } : null;
     },
 
     guardClose({ dirty, confirm }) {
@@ -148,12 +194,9 @@ function tauriBackend() {
       });
     },
 
-    async save(items, { mode, outDir }) {
-      const copies = saveMode(mode).needsOutDir;
-      const results = await invoke('apply_edits', {
-        items, mode, outDir: copies ? outDir : null,
-      });
-      return { results, destination: copies ? wroteTo(outDir) : editedOriginals() };
+    async save(items, { outDir }) {
+      const results = await invoke('apply_edits', { items, outDir });
+      return { results, destination: wroteTo(outDir) };
     },
   };
 }
@@ -203,17 +246,21 @@ async function webBackend() {
     };
   }
 
-  /** Read a set of files. Nothing about the open session changes until the
-   *  app calls activate(), so a source it declines leaves the old one intact. */
+  /** What makes two picked files the same photo. A browser gives no stable file
+   *  id, so identity is what the user can see: where it came from, how big it
+   *  is and when it was last written. Without this, adding the same folder
+   *  twice would load every photo twice over. */
+  const idOf = (f) => `${f.webkitRelativePath || f.name}|${f.size}|${f.lastModified}`;
+
+  /** Read a set of files. Nothing about the session changes until the app calls
+   *  activate(), so a source it declines leaves the current one intact. */
   async function ingest(fileList, label, handle = null) {
     const accepted = [...fileList].filter((f) => wasm.supported(f.name));
     const found = new Map();
     const photos = [];
-    let seq = 0;
     for (const f of accepted) {
-      // webkitRelativePath keeps folder structure visible and ids unique; a
-      // plain multi-file pick has none, so fall back to a counter.
-      const id = f.webkitRelativePath || `${f.name}#${seq++}`;
+      const id = idOf(f);
+      if (found.has(id)) continue;
       const bytes = new Uint8Array(await f.arrayBuffer());
       // Some files pass the extension check but could never be written back.
       // Leaving them out here is kinder than accepting edits and failing at
@@ -227,11 +274,11 @@ async function webBackend() {
       photos,
       unreadable: fileList.length - photos.length,
       activate() {
-        files.clear();
         for (const [id, f] of found) files.set(id, f);
-        for (const url of previews.values()) URL.revokeObjectURL(url);
-        previews.clear();
-        outHandle = handle;
+        // The first folder we hold a handle for is where a new output folder
+        // gets made. A later source never moves it, and neither does adding
+        // loose files, so the destination cannot shift under a half-done job.
+        if (handle && !outHandle) outHandle = handle;
       },
     };
   }
@@ -256,27 +303,77 @@ async function webBackend() {
       .map((e) => new Promise((ok, fail) => e.file(ok, fail))));
   }
 
-  async function readDrop({ handle, entry, loose }) {
-    // One folder opens like the picker would, keeping its handle so saving can
-    // write back beside it. Loose files open as they are.
-    const dir = await handle;
-    if (dir?.kind === 'directory') {
-      return ingest(await filesIn(dir), dir.name, dir);
+  /**
+   * The `<input type=file>` fallback, for browsers with no File System Access
+   * API. Resolves to a FileList or null when the chooser was dismissed.
+   */
+  function pickViaInput({ directory }) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    if (directory) input.webkitdirectory = true;
+    input.accept = exts.map((e) => `.${e}`).join(',');
+    input.style.display = 'none';
+    document.body.append(input);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (v) => {
+        if (settled) return;
+        settled = true;
+        input.remove();
+        resolve(v);
+      };
+      input.onchange = () => finish(input.files);
+      input.oncancel = () => finish(null);
+      // Not every browser fires `cancel` for a *directory* picker (Brave does
+      // not), and this promise is what the whole add waits on. Without a second
+      // way out, dismissing the chooser hangs it for ever: the source label
+      // sits on "Reading…" and the button stays disabled, so the app looks dead
+      // from then on. Focus coming back means the chooser has closed; give
+      // `change` a moment to land first, and if nothing arrived it was dismissed.
+      window.addEventListener('focus', () => {
+        setTimeout(() => finish(input.files?.length ? input.files : null), 500);
+      }, { once: true });
+      input.click();
+    });
+  }
+
+  /**
+   * A drop, which can mix folders and loose files. The caller has already taken
+   * everything off the DataTransfer, because its items go dead the moment the
+   * event returns.
+   */
+  async function readDrop(items) {
+    const dirs = [];
+    const loose = [];
+    for (const it of items) {
+      const handle = await it.handle;
+      if (handle?.kind === 'directory') dirs.push(handle);
+      else if (it.entry?.isDirectory) dirs.push(it.entry);
+      else if (it.file) loose.push(it.file);
     }
-    if (entry?.isDirectory) {
-      return ingest(await filesInEntry(entry), entry.name);
+
+    const picked = [...loose];
+    for (const d of dirs) {
+      picked.push(...(d.kind === 'directory' ? await filesIn(d) : await filesInEntry(d)));
     }
-    if (!loose.length) return null;
-    return ingest(loose, 'dropped photos');
+    if (!picked.length) return null;
+
+    const label = dirs.length === 1 && !loose.length ? dirs[0].name
+      : dirs.length ? 'dropped folders' : 'dropped photos';
+    // Only an unambiguous single folder is worth keeping a handle for; with a
+    // mixture there is no one place the output belongs beside.
+    const handle = dirs.length === 1 && dirs[0].kind === 'directory' ? dirs[0] : null;
+    return ingest(picked, label, handle);
   }
 
   return {
     id: 'web',
     caps: {
-      // The browser never holds the originals, so copies are the only option.
-      saveModes: ['copy'],
       // Writing back to a folder needs the File System Access API.
       outputFolder: canWriteFiles,
+      // A browser never sees a path, only a folder it has been handed.
+      outputPaths: false,
     },
 
     async envWarning() {
@@ -285,7 +382,7 @@ async function webBackend() {
         : 'This browser cannot write files directly, so saving will download a ZIP instead. Chrome or Edge can save straight to a folder.';
     },
 
-    async pickSource() {
+    async pickFolder() {
       // Prefer the directory picker: it preserves folder structure and is the
       // only route to writing results back without a download.
       if (canWriteFiles) {
@@ -298,39 +395,31 @@ async function webBackend() {
         return ingest(await filesIn(dir), dir.name, dir);
       }
 
-      // Fallback: a directory input. Works everywhere, no write access.
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
-      input.webkitdirectory = true;
-      input.accept = exts.map((e) => `.${e}`).join(',');
-      input.style.display = 'none';
-      document.body.append(input);
-      let chosen;
-      try {
-        chosen = await new Promise((resolve) => {
-          let settled = false;
-          const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
-          input.onchange = () => finish(input.files);
-          input.oncancel = () => finish(null);
-          // Not every browser fires `cancel` for a *directory* picker (Brave
-          // does not), and this promise is what the whole
-          // open waits on. Without a second way out, dismissing the chooser
-          // hangs the open for ever: the folder label sits on "Reading…" and
-          // the button stays disabled, so the app looks dead from then on.
-          // Focus coming back means the chooser has closed; give `change` a
-          // moment to land first, and if nothing arrived it was dismissed.
-          window.addEventListener('focus', () => {
-            setTimeout(() => finish(input.files?.length ? input.files : null), 500);
-          }, { once: true });
-          input.click();
-        });
-      } finally {
-        input.remove();
-      }
-      if (!chosen || !chosen.length) return null;
+      const chosen = await pickViaInput({ directory: true });
+      if (!chosen?.length) return null;
       const root = chosen[0].webkitRelativePath?.split('/')[0] || 'photos';
       return ingest(chosen, root);
+    },
+
+    async pickFiles() {
+      if (typeof window.showOpenFilePicker === 'function') {
+        let handles;
+        try {
+          handles = await window.showOpenFilePicker({
+            multiple: true,
+            types: [{ description: 'Images', accept: { 'image/*': exts.map((e) => `.${e}`) } }],
+          });
+        } catch {
+          return null; // user dismissed
+        }
+        // Picking files hands over no folder, so this never sets a destination;
+        // whatever folder the session already had stays the one.
+        return ingest(await Promise.all(handles.map((h) => h.getFile())), 'photos');
+      }
+
+      const chosen = await pickViaInput({ directory: false });
+      if (!chosen?.length) return null;
+      return ingest(chosen, 'photos');
     },
 
     watchDrop({ hover, drop }) {
@@ -353,14 +442,28 @@ async function webBackend() {
         hover(false);
         // DataTransfer items go dead once the event returns, so take everything
         // synchronously and resolve it afterwards.
-        const items = [...e.dataTransfer.items].filter((i) => i.kind === 'file');
-        const first = items.length === 1 ? items[0] : null;
-        drop(readDrop({
-          handle: first?.getAsFileSystemHandle?.().catch(() => null),
-          entry: first?.webkitGetAsEntry?.(),
-          loose: items.map((i) => i.getAsFile()).filter(Boolean),
-        }));
+        drop(readDrop([...e.dataTransfer.items].filter((i) => i.kind === 'file').map((i) => ({
+          handle: i.getAsFileSystemHandle?.().catch(() => null),
+          entry: i.webkitGetAsEntry?.(),
+          file: i.getAsFile(),
+        }))));
       });
+    },
+
+    /** These photos left the session, so let go of their bytes and previews. */
+    forget(ids) {
+      for (const id of ids) {
+        files.delete(id);
+        const url = previews.get(id);
+        if (url) { URL.revokeObjectURL(url); previews.delete(id); }
+      }
+    },
+
+    reset() {
+      files.clear();
+      for (const url of previews.values()) URL.revokeObjectURL(url);
+      previews.clear();
+      outHandle = null;
     },
 
     async loadPreview(photo) {
@@ -403,6 +506,10 @@ async function webBackend() {
       return `${label}_tagged`;
     },
 
+    outputParent() {
+      return outHandle?.name ?? null;
+    },
+
     guardClose({ dirty }) {
       // Browsers only allow their own generic prompt here.
       window.addEventListener('beforeunload', (e) => {
@@ -414,7 +521,7 @@ async function webBackend() {
       if (!canWriteFiles) return null;
       try {
         outHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-        return outHandle.name;
+        return { parent: outHandle.name };
       } catch {
         return null;
       }
@@ -458,8 +565,10 @@ async function webBackend() {
       if (dest) {
         try {
           const target = await dest.getDirectoryHandle(folder, { create: true });
+          const used = new Set();
           for (const w of written) {
-            const fh = await target.getFileHandle(w.name, { create: true });
+            const name = await freeNameIn(target, w.name, used);
+            const fh = await target.getFileHandle(name, { create: true });
             const s = await fh.createWritable();
             await s.write(w.bytes);
             await s.close();
@@ -475,7 +584,8 @@ async function webBackend() {
       // The write landed, but not where the user asked. Say so, or the message
       // names a folder they will not find the files in.
       const zip = `${folder}.zip`;
-      downloadZip(written, zip);
+      const taken = new Set();
+      downloadZip(written.map((w) => ({ ...w, name: freeName(w.name, taken) })), zip);
       return { results, destination: downloaded(zip) };
     },
   };

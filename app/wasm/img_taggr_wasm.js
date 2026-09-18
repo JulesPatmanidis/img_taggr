@@ -23,7 +23,9 @@ export function read_meta(bytes, filename) {
 }
 
 /**
- * Why this file cannot be tagged, or `undefined` if it can.
+ * Why this file cannot be tagged, or `undefined` if it can. The importer calls
+ * it once it has the bytes, so a file that could never be saved never reaches
+ * the list.
  * @param {Uint8Array} bytes
  * @param {string} filename
  * @returns {string | undefined}

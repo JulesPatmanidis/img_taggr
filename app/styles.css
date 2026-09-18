@@ -128,7 +128,7 @@ body {
 }
 .folder svg { flex: 0 0 auto; color: var(--muted-2); }
 .folder span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Nothing open yet: the icon would be pointing at nothing. */
+/* Nothing added yet: the icon would be pointing at nothing. */
 .folder:has(span:empty) { display: none; }
 
 /* How much of the folder is done, and whether it has been written out. */
@@ -168,6 +168,8 @@ body {
 }
 .iconBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .iconBtn:disabled { color: var(--line-3); cursor: default; }
+/* Sits inside a line of text rather than beside other buttons. */
+.iconBtn.sm { width: 20px; height: 20px; flex: 0 0 auto; }
 
 /* Keyboard users see where they are; mouse users are not shown rings. */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -736,7 +738,7 @@ button.insThumb:hover { border-color: var(--accent-hover); }
 .fldRow { display: flex; gap: 10px; }
 .fldRow .fld { flex: 1 1 0; min-width: 0; }
 .help { margin: -4px 0 0; font-size: 11px; line-height: 1.45; color: var(--muted-2); }
-.insFoot { margin-top: auto; padding-top: 12px; }
+.insFoot { margin-top: auto; padding-top: 12px; display: flex; flex-direction: column; gap: 7px; }
 .insFoot .btn { width: 100%; height: 36px; }
 .pill {
   font-size: 10px; padding: 1px 7px; border-radius: 999px;
@@ -812,19 +814,6 @@ button.insThumb:hover { border-color: var(--accent-hover); }
 .btn.danger:hover { filter: brightness(1.08); }
 .modal h2 { margin: 0 0 5px; font-family: var(--display); font-weight: 600; font-size: 16px; }
 .modal p { margin: 0 0 14px; font-size: 12px; }
-.radios { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
-.radio {
-  display: flex; gap: 9px; align-items: flex-start; padding: 9px 11px;
-  border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer;
-}
-.radio:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-/* The one mode that cannot be undone says so in colour, not only in words. */
-.radio.danger:has(input:checked) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
-.radio.danger:has(input:checked) span { color: var(--danger); }
-.radio div { display: flex; flex-direction: column; gap: 1px; }
-.radio b { font-size: 12px; font-weight: 600; }
-.radio span { font-size: 11px; }
-.radio code { font-family: var(--mono); font-size: 10px; }
 .fld.wide { width: 100%; }
 .fld.wide .row { display: flex; gap: 6px; }
 .fld.wide input { flex: 1; width: auto; }
@@ -919,7 +908,8 @@ main:has(.welcome:not(.hidden)) #stage { visibility: hidden; }
 }
 .welcomeCard h1 { margin: 0 0 16px; font-family: var(--display); font-weight: 600; font-size: 22px; line-height: 1.25; letter-spacing: -.3px; }
 .welcomeCard ol { margin: 0 0 22px; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
-.welcomeCard .btn.primary { padding: 9px 20px; font-size: 14px; }
+.welcomeBtns { display: flex; gap: 8px; }
+.welcomeCard .btn { padding: 9px 20px; font-size: 14px; }
 .welcomeCard p { margin: 18px 0 0; font-size: 12px; }
 
 /* ── Shortcut list ────────────────────────────────────────────── */

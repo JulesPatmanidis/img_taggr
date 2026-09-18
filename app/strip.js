@@ -69,9 +69,14 @@ export function initStrip(options) {
   initResize();
 }
 
-/** Reset for a new folder. The cards themselves are built by sync(). */
-export function build() {
-  cards.clear();
+/**
+ * Settle the list after photos arrive or the session is emptied. The cards
+ * themselves are built by sync(); `reset` throws the existing ones away, which
+ * only an emptied session needs, since adding photos leaves the cards that are
+ * already up exactly as they are.
+ */
+export function build({ reset = false } = {}) {
+  if (reset) cards.clear();
   lastClicked = null;
   cursor = null;
   if (!state.photos.some(FILTERS[filter])) setFilter('all');

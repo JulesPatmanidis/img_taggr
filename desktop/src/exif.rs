@@ -98,21 +98,13 @@ pub struct Edit {
     pub clear_gps: bool,
 }
 
-/// Apply one edit to `target`, in place. The caller decides whether `target` is
-/// the original or a copy it made first.
-pub fn write_one(target: &Path, edit: &Edit, keep_backup: bool) -> Result<(), String> {
+/// Apply one edit to `target`, in place. `target` is always a copy the caller
+/// made first; originals are never opened for writing.
+pub fn write_one(target: &Path, edit: &Edit) -> Result<(), String> {
     let bytes = std::fs::read(target).map_err(|e| format!("cannot read: {e}"))?;
     let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let ft = core::file_type(&bytes, &name)
         .ok_or_else(|| format!("{}: unsupported format", core::ext_of(&name)))?;
-
-    if keep_backup {
-        // Same convention exiftool uses, so existing backups stay recognisable.
-        let backup = target.with_file_name(format!("{name}_original"));
-        if !backup.exists() {
-            std::fs::copy(target, &backup).map_err(|e| format!("backup failed: {e}"))?;
-        }
-    }
 
     let out = core::write_tags(
         bytes,

@@ -28,15 +28,23 @@ advertises what it can do so the UI hides controls that cannot work. Adding a
 capability means adding it to that advertisement, not branching on the platform
 in view code.
 
-Save modes are declared once, in `SAVE_MODES` in `app/backend.js`. The radio
-list is rendered from that array and `desktop/src/lib.rs` matches the same ids
-exhaustively, so a mode cannot exist in one half of the app and not the other.
+Saving has one shape and nothing to choose between: the tagged files are
+written as a new set into a folder of their own, and the sources are never
+opened for writing. That is what lets photos from any number of folders sit in
+one session, since no source has to stay writable, and what makes a save
+undoable by deleting the output.
+
+Photos accumulate. `addPhotos` in `state.js` is the only way in, from a picker
+or a drop, and it skips ids it already holds; `clearPhotos` is the only way to
+empty the list, which is why it is also the only place that asks about unsaved
+edits.
 
 | | Web | Desktop |
 |---|---|---|
 | Engine | `img-taggr-core` | `img-taggr-core` |
-| Source | folder picked in the browser | any folder on disk |
-| Writes | new files, or a ZIP download | copies, in place, or in place + backups |
+| Sources | folders and files picked in the browser | folders and files anywhere on disk |
+| Photo id | name, size and mtime | absolute path |
+| Writes | a new folder, or a ZIP download | a new folder |
 | Thumbnails | browser decode | `image` crate |
 
 ## Layout
@@ -54,7 +62,7 @@ app/                    frontend, plain ES modules, no build step
   preview.js            hover previews and the lightbox
   stage.js              map/timeline split: enlarge a pane, drag the divider
   dom.js                small DOM helpers: saved settings, drag handles
-  app.js                wiring: loading, inspector, previews, keyboard, save
+  app.js                wiring: adding photos, inspector, previews, keyboard, save
   index.html            the whole document, no templating
   styles.css            one stylesheet, custom properties at the top
   vendor/               Leaflet, Leaflet.markercluster and the three web fonts
@@ -64,7 +72,7 @@ engine-wasm/src/lib.rs  wasm-bindgen wrapper over engine, no logic of its own
 desktop/src/
   exif.rs               file I/O around the engine
   thumb.rs              thumbnail decode
-  paths.rs              output paths + collision handling
+  paths.rs              output paths, collision handling, the shared source root
   lib.rs                Tauri commands
 test/                   node --test over the DOM-free modules
 docs/imgs/              README screenshots
@@ -73,13 +81,13 @@ docs/imgs/              README screenshots
 ## Tests
 
 ```
-npm test             # 53 frontend tests
-npm run test:rust    # 8 engine + 7 desktop tests
+npm test             # 60 frontend tests
+npm run test:rust    # 10 engine + 13 desktop tests
 ```
 
 The frontend tests run on Node with no dependencies and no build step, which is
 why they only cover the modules that never touch the DOM: `state.js`,
-`edits.js`, the keyed list and the save-mode table. View code is checked by
+`edits.js`, the keyed list and the save contract. View code is checked by
 hand.
 
 There is no Cargo workspace at the repo root. `desktop/` declares its own

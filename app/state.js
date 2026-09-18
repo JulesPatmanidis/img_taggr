@@ -9,15 +9,18 @@
  */
 
 export const state = {
-  folder: null,
+  /** Where the photos came from, in the order they were added. Labels, not
+   *  photo counts: a source can be a folder or a single file, and photos leave
+   *  the list one at a time, so any tally kept here would go stale. */
+  sources: [],
   photos: [],
   /** Photo ids, insertion-ordered. Opaque, since the backend picks their shape. */
   selection: new Set(),
   undo: [],
   redo: [],
-  /** Bumped every time the photo list is replaced. Work started for an older
-   *  list checks it and stops, which the folder label cannot do: two loose
-   *  drops carry the same label. */
+  /** Bumped every time the list is emptied. Work started for an older list
+   *  checks it and stops, which the folder label cannot do: two loose drops
+   *  carry the same label. */
   session: 0,
 };
 
@@ -44,21 +47,61 @@ export const isRepaint = (reason) => reason === 'selection' || reason === 'thumb
  *  shot numbers are handed out in, so both agree on what "first" means. */
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
+/** Shot numbers handed out so far. Never reused inside a session, so a photo's
+ *  badge is fixed from the moment it arrives. */
+let lastSeq = 0;
+
 /**
- * Replace the photo list and open a new session, returning its token. Bundled
- * because the selection, the journal and the ordering all belong to the list
- * that is going away, and a caller that forgot one of them left the app in a
- * state the views cannot describe.
+ * Add photos to the session, skipping ids that are already loaded, and record
+ * where they came from. Returns the photos actually added, so the caller can
+ * report the duplicates and start thumbnails for only the new ones.
+ *
+ * Adding disturbs nothing that is already here. Existing shot numbers, the
+ * selection and the undo journal all survive, because a second source is not a
+ * fresh start, and a badge that renumbered under the user's hands would undo
+ * the point of having one.
  */
-export function setPhotos(photos) {
-  state.photos = photos;
-  // A shot number that never moves. Scanned film keeps its order in the
-  // filename, and the list re-sorts as dates are set, so the badge has to come
-  // from something fixed or it would renumber under the user's hands.
-  [...photos].sort(byName).forEach((p, i) => { p.seq = i + 1; });
+export function addPhotos(photos, label) {
+  const have = new Set(state.photos.map((p) => p.id));
+  const fresh = photos.filter((p) => !have.has(p.id));
+  if (!fresh.length) return fresh;
+
+  // Scanned film keeps its shot order in the filename, and the list re-sorts as
+  // dates are set, so the badge comes from name order within the batch.
+  [...fresh].sort(byName).forEach((p) => { p.seq = ++lastSeq; });
+  for (const p of fresh) state.photos.push(p);
+  if (label && !state.sources.includes(label)) state.sources.push(label);
+  sortPhotos();
+  return fresh;
+}
+
+/**
+ * Drop photos from the session. The journal is left alone on purpose: it
+ * restores values onto photos it still finds by id, so a step taken before a
+ * removal replays correctly and cannot resurrect what was removed.
+ *
+ * Returns how many left, which is what the caller reports.
+ */
+export function removePhotos(ids) {
+  const gone = new Set(ids);
+  const before = state.photos.length;
+  state.photos = state.photos.filter((p) => !gone.has(p.id));
+  for (const id of gone) state.selection.delete(id);
+  return before - state.photos.length;
+}
+
+/**
+ * Empty the session and open a new one, returning its token. Bundled because
+ * the selection, the journal, the sources and the shot numbers all belong to
+ * the list that is going away, and a caller that forgot one of them left the
+ * app in a state the views cannot describe.
+ */
+export function clearPhotos() {
+  state.photos = [];
+  state.sources = [];
   state.selection.clear();
   resetHistory();
-  sortPhotos();
+  lastSeq = 0;
   return ++state.session;
 }
 

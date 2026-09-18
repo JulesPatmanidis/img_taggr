@@ -1,20 +1,21 @@
-/* img-taggr wiring: folder loading, inspector, previews, keyboard, save. */
+/* img-taggr wiring: adding photos, inspector, previews, keyboard, save. */
 
 import {
   state, setOnChange, emit, selected, editedPhotos, isEdited, applyEdit, undo, redo,
   roundCoord, dayOf, photoCount, fmtDur, dtToMs, msToDt,
   isUndated, isUnplaced, folderStats,
-  EDITABLE, rebase, revertToBaseline, resetHistory, setPhotos,
+  EDITABLE, rebase, revertToBaseline, resetHistory,
+  addPhotos, removePhotos, clearPhotos,
 } from './state.js';
 import * as MapView from './map.js';
 import * as TL from './timeline.js';
-import { createBackend, saveMode, modesFor } from './backend.js';
+import { createBackend } from './backend.js';
 import { dateTimeField, calendar } from './datetime.js';
 import * as Strip from './strip.js';
 import { initSearch } from './search.js';
 import { hoverPreview, initLightbox, openLightbox } from './preview.js';
 import * as Stage from './stage.js';
-import { stored, store, replay, withCode } from './dom.js';
+import { stored, store, replay } from './dom.js';
 import { MULTI, common, mergeDateTime, parseShift, seedDateTime } from './edits.js';
 
 /** Desktop or browser engine, chosen once at boot. */
@@ -71,51 +72,129 @@ async function confirmDiscard(action) {
   });
 }
 
-/* ── Loading a folder ──────────────────────────────────────────── */
-/** `pending` is whatever the backend is producing, a picker or a drop, so
- *  both routes share one loading path. */
-async function openFolder(pending) {
-  $('btnOpen').disabled = true;
-  const prevLabel = $('folderLabel').textContent;
+/* ── Adding photos ─────────────────────────────────────────────── */
+/** Photos accumulate. Every add joins what is already loaded, from as many
+ *  folders as the user likes, and only Clear empties the list. Nothing here
+ *  asks about unsaved edits, because adding a source cannot lose one.
+ *
+ *  `pending` is whatever the backend is producing, a picker or a drop, so both
+ *  routes share one path in. */
+async function addSource(pending) {
+  for (const b of ADD_BUTTONS) $(b.id).disabled = true;
   try {
     $('folderLabel').textContent = 'Reading…';
     const res = await pending;
-    if (!res) { $('folderLabel').textContent = prevLabel; return; }
+    if (!res) return;
+
     res.activate?.();
-    state.folder = res.label;
-    const session = setPhotos(res.photos.map((p) => {
+    const added = addPhotos(res.photos.map((p) => {
       const photo = { ...p, id: p.path, thumb: null,
         lat: roundCoord(p.lat), lon: roundCoord(p.lon) };
       // Keep the as-read values so "edited" is always a real comparison rather
       // than a flag we have to remember to set.
       rebase(photo);
       return photo;
-    }));
+    }), res.label);
 
-    savedOnce = false;
-    $('folderLabel').textContent = res.label.length > 44 ? `…${res.label.slice(-43)}` : res.label;
-    $('folderLabel').title = res.label;
+    const known = res.photos.length - added.length;
+    if (!added.length) {
+      toast(known ? 'Already loaded · nothing to add'
+        : `Nothing to add${res.unreadable ? ` · ${res.unreadable} unreadable` : ''}`, true);
+      return;
+    }
+
     Strip.build();
     emit('photos');
     MapView.fit();
     TL.fit();
-    toast(photoCount(state.photos.length)
+    toast(`Added ${photoCount(added.length)}`
+      + (known ? ` · ${known} already loaded` : '')
       + (res.unreadable ? ` · ${res.unreadable} unreadable` : ''));
-    loadThumbs(session);
+    loadThumbs(added, state.session);
   } catch (e) {
     toast(String(e), true);
-    $('folderLabel').textContent = '';
   } finally {
-    $('btnOpen').disabled = false;
+    // Whatever happened, the label is whatever the sources now say it is.
+    renderSources();
+    for (const b of ADD_BUTTONS) $(b.id).disabled = false;
   }
 }
 
+/** Every button that starts an add, and which picker it opens. The bar and the
+ *  welcome card offer the same two, so they are listed once and both the
+ *  wiring and the "reading, hold on" disabling walk this. */
+const ADD_BUTTONS = [
+  { id: 'btnAddFolder', pick: 'pickFolder' },
+  { id: 'btnWelcomeFolder', pick: 'pickFolder' },
+  { id: 'btnAddFiles', pick: 'pickFiles' },
+  { id: 'btnWelcomeFiles', pick: 'pickFiles' },
+];
+
+/** The last segment of a path, whichever separator it uses. Sources are shown
+ *  by name, since a full path fills the bar and says little. */
+const baseName = (label) => label.replace(/[/\\]+$/, '').split(/[/\\]/).pop() || label;
+
+/** The bar's source line: the first source, plus how many joined it. */
+function renderSources() {
+  const { sources, photos } = state;
+  const label = !sources.length ? ''
+    : sources.length === 1 ? baseName(sources[0])
+      : `${baseName(sources[0])} +${sources.length - 1}`;
+  $('folderLabel').textContent = label.length > 44 ? `…${label.slice(-43)}` : label;
+  $('folderLabel').title = sources.join('\n');
+  $('btnClearAll').classList.toggle('hidden', !photos.length);
+}
+
+/** Everything that has to happen once the list is empty, wherever it was
+ *  emptied from. Bundled so the two routes cannot drift apart. */
+function endSession() {
+  backend.reset();
+  clearPhotos();
+  savedOnce = false;
+  Strip.build({ reset: true });
+  // The output folder was suggested from a source that is no longer here.
+  $('fOut').value = '';
+}
+
+/** Empty the session in one go. The only route that throws photos away
+ *  wholesale, so it is the only one that has to ask about unsaved edits. */
+async function clearAll() {
+  if (!state.photos.length) return;
+  if (!(await confirmDiscard('Removing every photo'))) return;
+  endSession();
+  emit('photos');
+  toast('Removed every photo');
+}
+
+/** Take the selection out of the session, edits and all. */
+async function removeSelected() {
+  const sel = selected();
+  if (!sel.length) return;
+  const edited = sel.filter(isEdited).length;
+  if (edited && !(await confirmDialog({
+    title: `Remove ${photoCount(sel.length)}?`,
+    body: `${edited} of them ${edited === 1 ? 'has unsaved changes' : 'have unsaved changes'}, `
+      + 'which go with them.',
+    yes: 'Remove',
+  }))) return;
+
+  const ids = sel.map((p) => p.id);
+  const n = removePhotos(ids);
+  backend.forget(ids);
+  // Removing the last photo is an emptied session by another route, so it ends
+  // the same way: no sources left to name, and no suggested output folder from
+  // a source that no longer has anything in it.
+  if (!state.photos.length) endSession();
+  emit('photos');
+  toast(`Removed ${photoCount(n)} from the list`);
+}
+
 /** Fetch thumbnails with bounded concurrency so a big folder stays responsive.
- *  `token` is the session this batch belongs to: when a second folder is opened
- *  the token moves on and these workers stop rather than decoding images for
+ *  `token` is the session this batch belongs to: when the list is emptied the
+ *  token moves on and these workers stop rather than decoding images for
  *  photos nobody can see any more. */
-async function loadThumbs(token) {
-  const queue = state.photos.slice();
+async function loadThumbs(photos, token) {
+  const queue = photos.slice();
   let dirty = false;
   const flush = () => { if (dirty) { dirty = false; renderAll('thumbs'); } };
   const ticker = setInterval(flush, 220);
@@ -155,7 +234,7 @@ function renderIdle(stats) {
   const { total, done, undated, unplaced, percent } = stats;
   $('statCount').textContent = String(total);
   $('statBar').style.width = `${percent}%`;
-  $('statLine').textContent = !total ? 'Open a folder to start.'
+  $('statLine').textContent = !total ? 'Add a folder or a few photos to start.'
     : `${done} tagged · ${total - done} still need a date or a location`;
   $('cUndated').textContent = String(undated);
   $('cUnplaced').textContent = String(unplaced);
@@ -215,6 +294,7 @@ function renderInspector(edited = editedPhotos().length, stats = folderStats()) 
 
   for (const id of ['fDt', 'btnCal', 'fTz', 'fShift', 'fLat', 'fLon']) $(id).disabled = !has;
   $('btnRevert').disabled = !sel.some(isEdited);
+  $('btnRemove').disabled = !has;
   $('btnClearGps').disabled = !sel.some((p) => p.lat != null);
   $('btnShowMap').disabled = !sel.some((p) => p.lat != null);
   $('btnShowTime').disabled = !sel.some((p) => p.datetime);
@@ -352,43 +432,55 @@ $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.che
 $('btnFit').addEventListener('click', () => TL.fit());
 
 /* ── Save ──────────────────────────────────────────────────────── */
+/* There is one way to save: tagged copies into a folder of their own. The
+   sources are never opened for writing, from any of the folders they came
+   from, so there is nothing here to choose between and nothing to undo but
+   deleting the output. */
+
 async function openSave() {
   const n = editedPhotos().length;
   if (!n) return;
-  const safe = modesFor(backend.caps).every((m) => !m.writesOriginals);
-  $('modalSummary').textContent = `${photoCount(n)} changed.`
-    + (safe ? ' Originals are never modified.' : '');
-  if (!$('fOut').value && state.folder) {
-    $('fOut').value = await backend.suggestOutput(state.folder);
+  $('modalSummary').textContent =
+    `${photoCount(n)} changed. The tagged copies go to a new folder; your originals are untouched.`;
+  if (!$('fOut').value && state.sources.length) {
+    $('fOut').value = await backend.suggestOutput(state.sources[0]);
   }
+  renderOutput();
   $('modal').classList.remove('hidden');
 }
 
-/** The chosen mode, as its entry in SAVE_MODES rather than a bare string. */
-function currentMode() {
-  return saveMode($('modeRadios').querySelector('input[name=mode]:checked').value);
+/** Where the sheet says the files will land. Two shapes: a full path, which a
+ *  desktop picker fills in, or a folder name plus the folder it is made inside,
+ *  which is as much as a browser is ever told about where it is writing. */
+function renderOutput() {
+  const { outputFolder, outputPaths } = backend.caps;
+  $('outLabel').textContent = outputPaths ? 'Output folder'
+    : outputFolder ? 'New folder' : 'Download as';
+  $('btnPickOut').classList.toggle('hidden', !outputFolder);
+  const parent = backend.outputParent();
+  $('outWhere').textContent = parent ? `Created inside ${parent}.` : '';
+  $('outWhere').classList.toggle('hidden', !parent);
 }
-$('modeRadios').addEventListener('change', () => {
-  $('outRow').classList.toggle('hidden', !currentMode().needsOutDir);
-});
+
 $('btnPickOut').addEventListener('click', async () => {
-  const d = await backend.pickOutput();
-  if (d) $('fOut').value = d;
+  const picked = await backend.pickOutput();
+  if (!picked) return;
+  if (picked.path) $('fOut').value = picked.path;
+  renderOutput();
 });
 $('btnCancel').addEventListener('click', () => $('modal').classList.add('hidden'));
 $('btnSave').addEventListener('click', openSave);
 
 $('btnConfirm').addEventListener('click', async () => {
-  const mode = currentMode();
   const outDir = $('fOut').value.trim();
-  if (mode.needsOutDir && !outDir) { toast('Choose an output folder', true); return; }
+  if (!outDir) { toast('Name the folder to save into', true); return; }
 
   const items = editedPhotos().map((p) => ({
     path: p.path,
     // Send the full current state, not a diff. Every write starts from the
-    // pristine source (copy mode re-copies the original, and the browser
-    // re-reads the picked File), so sending only what changed since the last
-    // save would silently drop edits written in an earlier save.
+    // pristine source (the original is re-copied, and the browser re-reads the
+    // picked File), so sending only what changed since the last save would
+    // silently drop edits written in an earlier save.
     ...Object.fromEntries(EDITABLE.map((k) => [k, p[k]])),
     // Distinguish "remove the location" from "there was never one".
     clear_gps: isUnplaced(p) && p.orig.lat != null,
@@ -397,7 +489,7 @@ $('btnConfirm').addEventListener('click', async () => {
   $('btnConfirm').disabled = true;
   $('btnConfirm').textContent = 'Writing…';
   try {
-    const { results, destination } = await backend.save(items, { mode: mode.id, outDir });
+    const { results, destination } = await backend.save(items, { outDir });
     const ok = results.filter((r) => r.ok);
     const bad = results.filter((r) => !r.ok);
 
@@ -423,50 +515,11 @@ $('btnConfirm').addEventListener('click', async () => {
   }
 });
 
-/** One save-mode radio, built from its entry in SAVE_MODES. */
-function modeRadio(mode) {
-  const label = document.createElement('label');
-  label.className = 'radio';
-  label.classList.toggle('danger', mode.destructive);
-
-  const input = document.createElement('input');
-  input.type = 'radio';
-  input.name = 'mode';
-  input.value = mode.id;
-
-  const text = document.createElement('div');
-  const name = document.createElement('b');
-  name.textContent = mode.label;
-  const hint = document.createElement('span');
-  hint.className = 'muted';
-  hint.append(withCode(mode.hint));
-  text.append(name, hint);
-
-  label.append(input, text);
-  return label;
-}
-
 /** Where the files ended up, which is not always where they were asked to go,
- *  so this reads the destination the backend reports rather than the mode. */
+ *  so this reads the destination the backend reports. */
 function describeSave(n, { kind, label }) {
   if (kind === 'download') return `Downloaded ${photoCount(n)} as ${label}`;
-  if (kind === 'folder') return `Wrote ${photoCount(n)} to ${label}`;
-  return `Updated ${photoCount(n)}`;
-}
-
-/** Offer exactly the save modes this backend can perform, rather than showing
- *  controls that would fail. */
-function applyCaps() {
-  const modes = modesFor(backend.caps);
-  $('modeRadios').replaceChildren(...modes.map(modeRadio));
-  $('modeRadios').querySelector('input[name=mode]').checked = true;
-  $('outRow').classList.toggle('hidden', !currentMode().needsOutDir);
-  // With nothing to choose between, the radio list is noise.
-  $('modeRadios').classList.toggle('hidden', modes.length === 1);
-
-  $('btnPickOut').classList.toggle('hidden', !backend.caps.outputFolder);
-  $('outRow').querySelector('span').textContent = backend.caps.outputFolder
-    ? 'Output folder' : 'Download as';
+  return `Wrote ${photoCount(n)} to ${label}`;
 }
 
 /* ── Previews ────────────────────────────────────────────────── */
@@ -514,6 +567,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); Strip.selectAll(); return; }
   if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); openSave(); return; }
+  if (e.key === 'Delete') { e.preventDefault(); removeSelected(); return; }
   if (e.key === 'Escape') {
     if (!$('modal').classList.contains('hidden')) { $('modal').classList.add('hidden'); return; }
     state.selection.clear(); emit('selection'); return;
@@ -544,6 +598,7 @@ function renderAll(reason) {
   // One pass over the photos; the top bar and the inspector both read it.
   const stats = folderStats();
   renderProgress(edited, stats);
+  renderSources();
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
   Strip.sync();
   renderInspector(edited, stats);
@@ -576,12 +631,11 @@ function renderAll(reason) {
 }
 setOnChange(renderAll);
 
-async function onOpenClick() {
-  // The picker needs a user gesture; the confirm's own click provides a fresh one.
-  if (await confirmDiscard('Opening another folder')) openFolder(backend.pickSource());
+for (const { id, pick } of ADD_BUTTONS) {
+  $(id).addEventListener('click', () => addSource(backend[pick]()));
 }
-$('btnOpen').addEventListener('click', onOpenClick);
-$('btnWelcomeOpen').addEventListener('click', onOpenClick);
+$('btnClearAll').addEventListener('click', clearAll);
+$('btnRemove').addEventListener('click', removeSelected);
 $('btnUndo').addEventListener('click', () => { if (undo()) emit('edits'); });
 $('btnRedo').addEventListener('click', () => { if (redo()) emit('edits'); });
 
@@ -656,12 +710,11 @@ initSearch({
   onPick: MapView.showPlace,
   onClear: MapView.clearPlace,
 });
-applyCaps();
+renderOutput();
 backend.watchDrop({
   hover: (on) => $('dropZone').classList.toggle('hidden', !on),
-  drop: async (pending) => {
-    if (await confirmDiscard('Opening these photos')) openFolder(pending);
-  },
+  // A drop adds to the session like any other source, so it needs no warning.
+  drop: (pending) => addSource(pending),
 });
 backend.guardClose({
   dirty: () => editedPhotos().length > 0,

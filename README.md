@@ -98,7 +98,7 @@ everything.
   the first and the last, which untangles a burst dropped on one spot.
 
 The **Date this batch** option after importing images takes a start time and one
-interval and dates the whole folder in filename order.
+interval and dates everything still undated, in filename order.
 
 <img src="docs/imgs/first-run.png" width="820" alt="A freshly opened folder, nothing dated or placed yet">
 
@@ -127,17 +127,13 @@ The app stages every change in memory and writes nothing until you press
 **Save**. Amber dots show what is still pending. You can undo with Ctrl+Z to unwind anything
 not yet written.
 
-Three save modes:
+Tagged files are written as a new set into a folder, and the originals are never opened for writing.
 
-| Mode | What it does |
-|---|---|
-| **Write copies** (default) | Tagged files go to a new folder. Originals are left unchanged. |
-| **Edit in place, keep backups** | Each original is preserved as `name.ext_original` (exiftool convention). |
-| **Edit in place** | Overwrites originals. No undo once written. |
+Only the photos you changed are written. Unedited ones stay where they are.
 
-The web build only offers copies because the browser has no direct access to the filesystem.
-
-Copy mode is the default, but it is still a good idea to back up anything irreplaceable before editing them.
+Browsers without the File System Access API (Firefox, Safari) cannot write to a
+folder at all, so they download a ZIP instead (the app detects this and relabels
+the field accordingly).
 
 ## Privacy
 
@@ -158,6 +154,7 @@ Map tiles are fetched from their providers as you pan.
 | `Ctrl+Z` / `Ctrl+Shift+Z` | undo / redo |
 | `↑` `↓` in the photo list | select next (`Shift` extends, `Ctrl` only moves, `Ctrl+Space` toggles) |
 | `Ctrl+A` | select every photo the list shows |
+| `Delete` | take the selected photos out of the list |
 | `Ctrl+S` | save |
 | `←` `→` | shift selection 1 min (`Shift` = 10 s) |
 | `Esc` | clear selection |
@@ -167,7 +164,7 @@ Map tiles are fetched from their providers as you pan.
 ## Development
 
 ```
-npm test             # frontend: state, undo journal, edit logic, save modes
+npm test             # frontend: state, undo journal, edit logic, save contract
 npm run test:rust    # engine metadata handling, desktop output paths
 ```
 
