@@ -1,9 +1,5 @@
 /* Date-time field: one "YYYY-MM-DD HH:MM:SS" input, edited segment by segment.
  *
- * Replaces the native date and time inputs, which commit on every keystroke,
- * render differently in every browser, and whose calendar popups ignore the
- * keyboard and outside clicks.
- *
  *   click            select the segment under the pointer
  *   ← → / - : space  move between segments
  *   ↑ ↓              step the segment, carrying into its neighbours
@@ -56,7 +52,7 @@ export function dateTimeField(input, { onCommit }) {
   input.autocomplete = 'off';
 
   let value = null;      // committed value shown when idle, or null
-  let mixed = false;     // selection disagrees, so nothing single to show
+  let mixed = false;     // the selected photos hold different values
   let fallback = null;   // where editing starts from when there is no value
   let start = null;      // text at the start of this edit
   let draft = null;      // text while editing
@@ -238,7 +234,7 @@ const DAY_MS = 86400000;
  * @param opts.current() "YYYY-MM-DD" to open on, or null for today
  * @param opts.onPick(day)
  * @param opts.absorbIn  elements where a bare click edits photos, so the click
- *                 that closes the calendar must not also land there
+ *                 that closes the calendar is not passed on to them
  */
 export function calendar(button, { current, onPick, absorbIn = [] }) {
   const pop = document.createElement('div');

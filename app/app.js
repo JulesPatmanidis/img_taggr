@@ -34,8 +34,7 @@ function toast(msg, isErr = false) {
 }
 
 /* ── Confirmation ──────────────────────────────────────────────── */
-/** An in-page yes/no, so nothing blocks the page the way confirm() does.
- *  Cancel has the focus: the destructive answer must be chosen on purpose. */
+/** An in-page yes/no dialog, resolving true for yes. Cancel has the focus. */
 function confirmDialog({ title, body, yes }) {
   return new Promise((resolve) => {
     const wrap = $('confirm');
@@ -73,12 +72,8 @@ async function confirmDiscard(action) {
 }
 
 /* ── Adding photos ─────────────────────────────────────────────── */
-/** Photos accumulate. Every add joins what is already loaded, from as many
- *  folders as the user likes, and only Clear empties the list. Nothing here
- *  asks about unsaved edits, because adding a source cannot lose one.
- *
- *  `pending` is whatever the backend is producing, a picker or a drop, so both
- *  routes share one path in. */
+/** Add the photos `pending` resolves to, from a picker or a drop, to what is
+ *  already loaded. Adding never loses an edit, so it never asks. */
 async function addSource(pending) {
   for (const b of ADD_BUTTONS) $(b.id).disabled = true;
   try {
@@ -90,8 +85,6 @@ async function addSource(pending) {
     const added = addPhotos(res.photos.map((p) => {
       const photo = { ...p, id: p.path, thumb: null,
         lat: roundCoord(p.lat), lon: roundCoord(p.lon) };
-      // Keep the as-read values so "edited" is always a real comparison rather
-      // than a flag we have to remember to set.
       rebase(photo);
       return photo;
     }), res.label);
@@ -114,15 +107,13 @@ async function addSource(pending) {
   } catch (e) {
     toast(String(e), true);
   } finally {
-    // Whatever happened, the label is whatever the sources now say it is.
+    // Replaces the "Reading…" label, whatever happened.
     renderSources();
     for (const b of ADD_BUTTONS) $(b.id).disabled = false;
   }
 }
 
-/** Every button that starts an add, and which picker it opens. The bar and the
- *  welcome card offer the same two, so they are listed once and both the
- *  wiring and the "reading, hold on" disabling walk this. */
+/** Every button that starts an add, and the picker it opens. */
 const ADD_BUTTONS = [
   { id: 'btnAddFolder', pick: 'pickFolder' },
   { id: 'btnWelcomeFolder', pick: 'pickFolder' },
@@ -130,8 +121,7 @@ const ADD_BUTTONS = [
   { id: 'btnWelcomeFiles', pick: 'pickFiles' },
 ];
 
-/** The last segment of a path, whichever separator it uses. Sources are shown
- *  by name, since a full path fills the bar and says little. */
+/** The last segment of a path, whichever separator it uses. */
 const baseName = (label) => label.replace(/[/\\]+$/, '').split(/[/\\]/).pop() || label;
 
 /** The bar's source line: the first source, plus how many joined it. */
@@ -146,18 +136,17 @@ function renderSources() {
 }
 
 /** Everything that has to happen once the list is empty, wherever it was
- *  emptied from. Bundled so the two routes cannot drift apart. */
+ *  emptied from. */
 function endSession() {
   backend.reset();
   clearPhotos();
   savedOnce = false;
   Strip.build({ reset: true });
-  // The output folder was suggested from a source that is no longer here.
+  // The output folder was suggested from a source that is no longer loaded.
   $('fOut').value = '';
 }
 
-/** Empty the session in one go. The only route that throws photos away
- *  wholesale, so it is the only one that has to ask about unsaved edits. */
+/** Empty the session, after asking about unsaved edits. */
 async function clearAll() {
   if (!state.photos.length) return;
   if (!(await confirmDiscard('Removing every photo'))) return;
@@ -181,18 +170,14 @@ async function removeSelected() {
   const ids = sel.map((p) => p.id);
   const n = removePhotos(ids);
   backend.forget(ids);
-  // Removing the last photo is an emptied session by another route, so it ends
-  // the same way: no sources left to name, and no suggested output folder from
-  // a source that no longer has anything in it.
+  // Removing the last photo ends the session the same way Clear does.
   if (!state.photos.length) endSession();
   emit('photos');
   toast(`Removed ${photoCount(n)} from the list`);
 }
 
-/** Fetch thumbnails with bounded concurrency so a big folder stays responsive.
- *  `token` is the session this batch belongs to: when the list is emptied the
- *  token moves on and these workers stop rather than decoding images for
- *  photos nobody can see any more. */
+/** Fetch thumbnails with bounded concurrency. The workers stop once `token`,
+ *  the session this batch belongs to, is no longer current. */
 async function loadThumbs(photos, token) {
   const queue = photos.slice();
   let dirty = false;
@@ -216,8 +201,7 @@ async function loadThumbs(photos, token) {
 
 /* ── Inspector ─────────────────────────────────────────────────── */
 function setField(el, val, fmt = (v) => v) {
-  // A re-render must never wipe what someone is typing. Once they commit, the
-  // field is fair game again: bad input resets, good input is reformatted.
+  // Never overwrite a field mid-typing; it is refreshed once committed.
   if (el.dataset.typing) return;
   el.classList.toggle('multi', val === MULTI);
   if (val === MULTI) {
@@ -229,7 +213,8 @@ function setField(el, val, fmt = (v) => v) {
   }
 }
 
-/** Nothing selected: say what the folder still needs and offer a way in. */
+/** Inspector content with nothing selected: progress, and the undated and
+ *  unplaced counts with their select buttons. */
 function renderIdle(stats) {
   const { total, done, undated, unplaced, percent } = stats;
   $('statCount').textContent = String(total);
@@ -242,8 +227,8 @@ function renderIdle(stats) {
   $('btnPickUnplaced').disabled = !unplaced;
 }
 
-/** The strip of what is selected, up to a row's worth. Each one opens the
- *  lightbox on that photo, so it is a button and not a decorated div. */
+/** The strip of selected photos, up to a row's worth. Each opens the lightbox
+ *  on its photo. */
 function renderThumbs(sel) {
   const box = $('insThumbs');
   box.replaceChildren();
@@ -268,9 +253,9 @@ function renderThumbs(sel) {
 }
 
 /**
- * What a mixed selection is hiding, as a span between its two extremes. The
- * ends are compared as instants, not as clock strings: two photos a day apart
- * at the same minute are a range, and 23:50–00:10 must not read backwards.
+ * What a mixed selection spans, from its earliest to its latest instant. The
+ * ends are compared as instants, not clock strings, so 23:50–00:10 across
+ * midnight reads the right way round.
  */
 function timeRange(sel) {
   const dated = sel.filter((p) => p.datetime);
@@ -332,7 +317,7 @@ function renderInspector(edited = editedPhotos().length, stats = folderStats()) 
 
 /**
  * Apply `fn` to every selected photo that `filter` accepts, as one undo step.
- * Returns how many photos it changed, so callers can report it.
+ * Returns how many photos it changed.
  */
 function applyField(fn, filter = () => true) {
   return applyEdit(selected().filter(filter), (ps) => { for (const p of ps) fn(p); });
@@ -396,8 +381,8 @@ $('btnRevert').addEventListener('click', () => {
 });
 
 /* ── Reveal ────────────────────────────────────────────────────── */
-/* Views never follow the selection on their own, because that makes the map jump
-   while you work. Double-click, or the inspector buttons, ask for it. */
+/** Bring `ids` into view on the map and/or timeline. Views never follow the
+ *  selection on their own; a double-click or the inspector buttons call this. */
 function reveal(ids, { map = false, time = false }) {
   Stage.show({ map, time });
   if (map) MapView.reveal(ids);
@@ -432,10 +417,8 @@ $('chkPath').addEventListener('change', (e) => MapView.setShowRoute(e.target.che
 $('btnFit').addEventListener('click', () => TL.fit());
 
 /* ── Save ──────────────────────────────────────────────────────── */
-/* There is one way to save: tagged copies into a folder of their own. The
-   sources are never opened for writing, from any of the folders they came
-   from, so there is nothing here to choose between and nothing to undo but
-   deleting the output. */
+/* One way to save: tagged copies into a folder of their own. Sources are never
+   opened for writing. */
 
 async function openSave() {
   const n = editedPhotos().length;
@@ -449,9 +432,8 @@ async function openSave() {
   $('modal').classList.remove('hidden');
 }
 
-/** Where the sheet says the files will land. Two shapes: a full path, which a
- *  desktop picker fills in, or a folder name plus the folder it is made inside,
- *  which is as much as a browser is ever told about where it is writing. */
+/** The output location shown in the save sheet: a full path on desktop, or a
+ *  folder name and its parent folder in a browser. */
 function renderOutput() {
   const { outputFolder, outputPaths } = backend.caps;
   $('outLabel').textContent = outputPaths ? 'Output folder'
@@ -477,10 +459,8 @@ $('btnConfirm').addEventListener('click', async () => {
 
   const items = editedPhotos().map((p) => ({
     path: p.path,
-    // Send the full current state, not a diff. Every write starts from the
-    // pristine source (the original is re-copied, and the browser re-reads the
-    // picked File), so sending only what changed since the last save would
-    // silently drop edits written in an earlier save.
+    // The full state, not a diff: every save writes from the pristine source,
+    // so a diff would drop edits written by an earlier save.
     ...Object.fromEntries(EDITABLE.map((k) => [k, p[k]])),
     // Distinguish "remove the location" from "there was never one".
     clear_gps: isUnplaced(p) && p.orig.lat != null,
@@ -515,8 +495,7 @@ $('btnConfirm').addEventListener('click', async () => {
   }
 });
 
-/** Where the files ended up, which is not always where they were asked to go,
- *  so this reads the destination the backend reports. */
+/** The message after a save, naming the destination the backend reports. */
 function describeSave(n, { kind, label }) {
   if (kind === 'download') return `Downloaded ${photoCount(n)} as ${label}`;
   return `Wrote ${photoCount(n)} to ${label}`;
@@ -583,7 +562,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ── Render loop ───────────────────────────────────────────────── */
-/** "Saved" means nothing until a write has landed on disk. */
+/** Whether a save has written anything this session. */
 let savedOnce = false;
 
 function renderProgress(edited, { total, done, percent }) {
@@ -602,8 +581,8 @@ function renderAll(reason) {
   $('welcome').classList.toggle('hidden', state.photos.length > 0);
   Strip.sync();
   renderInspector(edited, stats);
-  // A hidden pane is redrawn when it comes back, through toggleMax. The reason
-  // rides along so a view can patch itself instead of laying out again.
+  // A hidden pane is redrawn by toggleMax when it is shown again. The reason is
+  // passed through so a view can update its nodes instead of re-laying out.
   if (Stage.mapShown()) MapView.render(reason);
   if (Stage.timeShown()) TL.render(reason);
 
@@ -612,10 +591,7 @@ function renderAll(reason) {
   for (const p of state.photos) if (p.lat != null && ++placed >= 2) break;
 
   MapView.setPlacing(sel.length > 0);
-  // The intro card and the banner say the same thing at different volumes, so
-  // only the card shows while the folder is still entirely unplaced.
-  // The card and the banner say the same thing at different volumes, so
-  // exactly one of them is up at a time.
+  // The intro card and the banner show the same message, so at most one is visible.
   const introUp = Boolean(state.photos.length) && placed === 0 && !sel.length;
   $('mapIntro').classList.toggle('hidden', !introUp);
   $('mapHint').classList.toggle('hidden', introUp);
@@ -677,7 +653,7 @@ Strip.initStrip({
 });
 MapView.initMap($('map'), {
   basemap: stored('basemap'),
-  // Say why nothing happened rather than silently ignoring the click.
+  // A map click with nothing selected shows the hint instead of doing nothing.
   onClickEmpty: () => replay($('mapHint'), 'nudge'),
   onReveal: (id) => reveal([id], { time: true }),
 });

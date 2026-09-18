@@ -147,7 +147,7 @@ export function initSearch({ input, list, center, onPick, onClear }) {
     }
   });
 
-  // pointerdown rather than click, so the pick lands before the field blurs.
+  // pointerdown rather than click, so the pick runs before the field's blur event.
   list.addEventListener('pointerdown', (e) => {
     const li = e.target.closest('[role="option"]');
     if (!li) return;

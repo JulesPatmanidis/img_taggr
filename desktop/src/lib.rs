@@ -1,6 +1,6 @@
 //! img-taggr: offline photo time and location metadata editor.
 //!
-//! The Rust side owns the filesystem and exiftool; the webview owns interaction.
+//! The Rust side does all filesystem access while the webview handles interaction.
 //! Nothing here reaches the network, and no image bytes leave the machine.
 
 mod exif;
@@ -13,11 +13,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// Formats we are willing to open, which is exactly what the engine can write
-/// back (`WRITABLE` in `engine/src/lib.rs`). Opening anything more would mean
-/// accepting edits that fail at save. Camera RAW is excluded deliberately:
-/// rewriting a RAW container is far easier to get wrong, and silently
-/// corrupting a negative is not an acceptable failure mode.
+/// Formats this build can open.
+/// same as `WRITABLE` in `engine/src/lib.rs`.
 const SUPPORTED: &[&str] = &[
     "jpg", "jpeg", "heic", "heif", "png", "tif", "tiff", "webp",
 ];
@@ -27,8 +24,8 @@ pub struct ScanResult {
     photos: Vec<Photo>,
     /// Files that looked like images but could not be read.
     unreadable: usize,
-    /// The deepest folder holding every source in this batch, which is what an
-    /// output folder is suggested next to. Empty when they share nothing.
+    /// The deepest folder containing every source in this batch; the output
+    /// folder is suggested as its sibling. Empty when there is none.
     folder: String,
 }
 
@@ -39,7 +36,7 @@ fn is_supported(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Every supported image inside a folder, newest structure and all.
+/// Every supported image inside a folder, subfolders included when `recursive`.
 fn walk(root: &Path, recursive: bool) -> Vec<PathBuf> {
     WalkDir::new(root)
         .max_depth(if recursive { 12 } else { 1 })
@@ -49,8 +46,7 @@ fn walk(root: &Path, recursive: bool) -> Vec<PathBuf> {
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
         .filter(|p| is_supported(p))
-        // Backups sit next to originals; never treat one as a fresh photo or a
-        // second pass would re-tag stale copies.
+        // `name.ext_original` backups are skipped.
         .filter(|p| {
             !p.file_name()
                 .and_then(|n| n.to_str())
@@ -61,8 +57,6 @@ fn walk(root: &Path, recursive: bool) -> Vec<PathBuf> {
 }
 
 /// Read a batch of sources, each either a folder to walk or a single image.
-/// Folders and loose files arrive through the same door so that picking,
-/// dropping and adding one more photo are all the same operation.
 #[tauri::command]
 fn scan_paths(paths: Vec<String>, recursive: bool) -> Result<ScanResult, String> {
     if paths.is_empty() {
@@ -70,8 +64,8 @@ fn scan_paths(paths: Vec<String>, recursive: bool) -> Result<ScanResult, String>
     }
 
     let mut files: Vec<PathBuf> = Vec::new();
-    // Where the output folder should be suggested: a source folder stands for
-    // itself, a loose file for the folder it sits in.
+    // Folders the output folder is suggested from. Can be the source folder itself, or
+    // or the parent folder of a loose file.
     let mut roots: Vec<PathBuf> = Vec::new();
     for raw in &paths {
         let path = PathBuf::from(raw);
@@ -93,15 +87,12 @@ fn scan_paths(paths: Vec<String>, recursive: bool) -> Result<ScanResult, String>
     files.dedup();
 
     let total = files.len();
-    // Chunked so a folder with 10k images does not build one enormous argv.
-    // Handed back in filename order, because the front end owns the capture
-    // ordering and re-sorts on every datetime edit anyway.
+    // Returned in filename order.
     let photos: Vec<Photo> = exif::read_batch(&files);
 
     Ok(ScanResult {
         unreadable: total.saturating_sub(photos.len()),
-        // Sources sharing no ancestor (two drives, say) still need a name for
-        // the bar and for the suggested output folder; the first one will do.
+        // Sources sharing no ancestor (two drives, say) fall back to the first.
         folder: paths::common_root(&roots)
             .or_else(|| roots.first().cloned())
             .map(|p| p.to_string_lossy().into_owned())
@@ -135,9 +126,8 @@ pub struct ItemResult {
     error: Option<String>,
 }
 
-/// Write the edits out as a fresh set of files in `out_dir`. There is only one
-/// way to save: the sources are never opened for writing, whatever folders they
-/// came from, so an edit can always be undone by deleting the output.
+/// Write the edits out as a fresh set of files in `out_dir`. Sources are never
+/// opened for writing.
 #[tauri::command]
 async fn apply_edits(items: Vec<Edit>, out_dir: String) -> Result<Vec<ItemResult>, String> {
     if out_dir.is_empty() {
@@ -161,10 +151,8 @@ async fn apply_edits(items: Vec<Edit>, out_dir: String) -> Result<Vec<ItemResult
                     return res;
                 }
 
-                // Photos from several folders land in one flat output folder, so
-                // two sources holding an IMG_0001.jpg each must not collide.
-                // Claiming the name creates the file, which is what makes it
-                // safe to do this from several threads at once.
+                // create_dest creates the file, so parallel saves of two
+                // same-named sources never write to the same path.
                 let target = match paths::create_dest(&out_dir, &src) {
                     Ok(t) => t,
                     Err(e) => {
@@ -181,8 +169,7 @@ async fn apply_edits(items: Vec<Edit>, out_dir: String) -> Result<Vec<ItemResult
                 match exif::write_one(&target, edit) {
                     Ok(()) => res.ok = true,
                     Err(e) => {
-                        // A copy we failed to tag is worse than no copy at all:
-                        // it looks like a finished result but carries old data.
+                        // Never leave an untagged copy that looks finished.
                         let _ = std::fs::remove_file(&target);
                         res.error = Some(e);
                     }

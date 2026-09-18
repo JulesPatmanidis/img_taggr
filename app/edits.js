@@ -1,15 +1,15 @@
-/* Pure edit logic: the parsing and merging behind the inspector's fields.
+/* Pure edit logic: parsing and merging for the inspector's fields.
  *
- * Nothing here touches the DOM or the backend, so Node can import it and test
- * it in plain JavaScript. Anything in app.js that reads a value and works out
- * what the photos should become belongs in this file; app.js keeps the wiring.
+ * Nothing here touches the DOM or the backend, so Node can import and test it.
+ * Code that computes new photo values from inspector input goes here; app.js
+ * holds only the event wiring.
  */
 
 import { dayOf, timeOf, normDt, seedDay } from './state.js';
 
 /* ── Shared values across a selection ──────────────────────────── */
 
-/** Returned by `common` when the selection disagrees. */
+/** Returned by `common` when the selected photos hold different values. */
 export const MULTI = Symbol('multiple');
 
 /** The value `fn` gives for every photo in `sel`, or MULTI if they differ.
@@ -22,9 +22,8 @@ export function common(sel, fn) {
 
 /* ── The date/time half merge ──────────────────────────────────── */
 
-/** The time of day an undated photo is given: midday rather than midnight,
- *  because an unknown time is far more likely to be during the day, and noon
- *  leaves room to shift either way without crossing into another date. */
+/** The time of day an undated photo is given. Noon leaves room to shift either
+ *  way without crossing into another date. */
 export const NOON = '12:00:00';
 
 /** Where the date/time field starts for a photo that has no date at all. */
@@ -49,9 +48,8 @@ export function mergeDateTime(p, { date, time }) {
 /**
  * "+3h47m", "-15s", "1d 2h", "-0:15" → seconds, or null if unreadable.
  *
- * Two spellings are accepted because both are natural: the colon form is how a
- * clock difference is read off ("-0:15"), and the unit form is how a drift is
- * described ("+3h47m"). A leading sign applies to the whole amount.
+ * Accepts the colon form ("-0:15") and the unit form ("+3h47m"). A leading sign
+ * applies to the whole amount.
  */
 export function parseShift(text) {
   const t = text.replace(/−/g, '-').replace(/\s+/g, '');

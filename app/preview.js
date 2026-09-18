@@ -4,8 +4,7 @@
  *   Space                                      full-size lightbox; ← → step
  *                                              through in time order, Esc closes
  *
- * Both are read-only: identifying a photo is the job here, and editing stays
- * in one place.
+ * Both are read-only.
  */
 
 import { state } from './state.js';
@@ -127,7 +126,7 @@ function lightboxEl() {
   // A click on the dark backdrop closes; a click on the photo does not.
   box.addEventListener('click', (e) => { if (e.target === box) closeLightbox(); });
   box.addEventListener('keydown', (e) => {
-    // The app's own shortcuts must not act on photos behind the lightbox.
+    // The app's shortcuts are disabled while the lightbox is open.
     e.stopPropagation();
     if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
@@ -183,7 +182,7 @@ async function show() {
   box.querySelector('.prev').disabled = order.length < 2;
   box.querySelector('.next').disabled = order.length < 2;
 
-  // The thumbnail stands in straight away, so stepping never flashes empty.
+  // Show the thumbnail until the full image has loaded.
   msg.classList.add('hidden');
   if (p.thumb) img.src = p.thumb; else img.removeAttribute('src');
   img.classList.add('loading');

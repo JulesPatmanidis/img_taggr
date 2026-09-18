@@ -2,16 +2,15 @@
  *
  * Time model: a photo's timestamp is *wall clock*, the numbers a camera wrote
  * on the file, held as "YYYY-MM-DDTHH:MM:SS" with no zone attached. The UTC
- * offset is a separate, independent field. That separation is deliberate: the
- * common repair is "the clock read 3h47m wrong", which must not be conflated
- * with "I was in a different timezone". All arithmetic runs through Date.UTC so
- * the machine's own timezone and its DST rules never leak into the result.
+ * offset is a separate, independent field, so "the clock read 3h47m wrong" and
+ * "I was in a different timezone" are different repairs. All arithmetic runs
+ * through Date.UTC, so the machine's own timezone and its DST rules never reach
+ * the result.
  */
 
 export const state = {
-  /** Where the photos came from, in the order they were added. Labels, not
-   *  photo counts: a source can be a folder or a single file, and photos leave
-   *  the list one at a time, so any tally kept here would go stale. */
+  /** Source labels, in the order they were added. A label names a folder or a
+   *  loose batch, never a count. */
   sources: [],
   photos: [],
   /** Photo ids, insertion-ordered. Opaque, since the backend picks their shape. */
@@ -19,17 +18,13 @@ export const state = {
   undo: [],
   redo: [],
   /** Bumped every time the list is emptied. Work started for an older list
-   *  checks it and stops, which the folder label cannot do: two loose drops
-   *  carry the same label. */
+   *  checks it and stops. */
   session: 0,
 };
 
 /* ── Change notification ───────────────────────────────────────── */
-/** Every mutation funnels through one re-render; there has never been a second
- *  event or a second subscriber, so this is a callback rather than a bus.
- *
- *  What the callback gets is the *reason*, which is what lets a view do less
- *  than a full rebuild:
+/** The single subscriber, called after every mutation with the *reason*, which
+ *  lets a view do less than a full rebuild:
  *    'photos'     a new list arrived
  *    'edits'      field values moved
  *    'thumbs'     images arrived
@@ -43,12 +38,12 @@ export const emit = (reason) => onChange(reason);
  *  its nodes instead of laying them out again. */
 export const isRepaint = (reason) => reason === 'selection' || reason === 'thumbs';
 
-/** Natural filename order: the tie-break for capture order and the order the
- *  shot numbers are handed out in, so both agree on what "first" means. */
+/** Natural filename order: the tie-break for capture order, and the order shot
+ *  numbers are handed out in. */
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
 
-/** Shot numbers handed out so far. Never reused inside a session, so a photo's
- *  badge is fixed from the moment it arrives. */
+/** Shot numbers handed out so far. Never reused inside a session, so a badge is
+ *  fixed from the moment its photo arrives. */
 let lastSeq = 0;
 
 /**
@@ -56,18 +51,16 @@ let lastSeq = 0;
  * where they came from. Returns the photos actually added, so the caller can
  * report the duplicates and start thumbnails for only the new ones.
  *
- * Adding disturbs nothing that is already here. Existing shot numbers, the
- * selection and the undo journal all survive, because a second source is not a
- * fresh start, and a badge that renumbered under the user's hands would undo
- * the point of having one.
+ * Adding disturbs nothing already here: existing shot numbers, the selection
+ * and the undo journal all survive.
  */
 export function addPhotos(photos, label) {
   const have = new Set(state.photos.map((p) => p.id));
   const fresh = photos.filter((p) => !have.has(p.id));
   if (!fresh.length) return fresh;
 
-  // Scanned film keeps its shot order in the filename, and the list re-sorts as
-  // dates are set, so the badge comes from name order within the batch.
+  // Badges follow name order within the batch, since the list itself re-sorts
+  // as dates are set.
   [...fresh].sort(byName).forEach((p) => { p.seq = ++lastSeq; });
   for (const p of fresh) state.photos.push(p);
   if (label && !state.sources.includes(label)) state.sources.push(label);
@@ -76,11 +69,9 @@ export function addPhotos(photos, label) {
 }
 
 /**
- * Drop photos from the session. The journal is left alone on purpose: it
- * restores values onto photos it still finds by id, so a step taken before a
- * removal replays correctly and cannot resurrect what was removed.
- *
- * Returns how many left, which is what the caller reports.
+ * Drop photos from the session, and return how many left. The journal is left
+ * alone: it restores values onto photos it still finds by id, so an older step
+ * still replays and cannot resurrect what was removed.
  */
 export function removePhotos(ids) {
   const gone = new Set(ids);
@@ -91,10 +82,8 @@ export function removePhotos(ids) {
 }
 
 /**
- * Empty the session and open a new one, returning its token. Bundled because
- * the selection, the journal, the sources and the shot numbers all belong to
- * the list that is going away, and a caller that forgot one of them left the
- * app in a state the views cannot describe.
+ * Empty the session and open a new one, returning its token. The selection, the
+ * journal, the sources and the shot numbers all go with the list.
  */
 export function clearPhotos() {
   state.photos = [];
@@ -131,9 +120,8 @@ export function msToDt(ms) {
 export const dayOf = (dt) => (dt ? dt.slice(0, 10) : null);
 export const timeOf = (dt) => (dt ? dt.slice(11, 19) : null);
 
-/** The day an undated photo should be filed under: its file timestamp if it has
- *  one, otherwise today. Both the inspector and the timeline need this answer
- *  and must agree on it. */
+/** The day an undated photo is filed under: its file timestamp if it has one,
+ *  otherwise today. */
 export const seedDay = (p) =>
   (p.file_modified ? dayOf(p.file_modified) : new Date().toISOString().slice(0, 10));
 
@@ -165,11 +153,10 @@ export function selected() {
 }
 
 /**
- * The selection gesture, shared by the filmstrip, map and timeline so all three
- * behave identically: ctrl/cmd toggles, shift extends from the last click, a
- * plain click replaces. Extending needs `anchor` (the id last clicked) and
- * `order` (the ids in the order the view shows them), so only views with a stable,
- * visible order offer it.
+ * The selection gesture, shared by the filmstrip, map and timeline: ctrl/cmd
+ * toggles, shift extends from the last click, a plain click replaces. Extending
+ * needs `anchor` (the id last clicked) and `order` (the ids in the order the
+ * view shows them), so only views with a stable visible order offer it.
  */
 export function clickSelect(id, { toggle = false, extend = false, anchor = null, order = null } = {}) {
   const from = extend && order ? order.indexOf(anchor) : -1;
@@ -185,14 +172,13 @@ export function clickSelect(id, { toggle = false, extend = false, anchor = null,
   emit('selection');
 }
 
-/** Capture order: undated first, as the to-do list, then by time, then name.
- *  Filename order is the other one worth having, because a scanned roll was
- *  shot in that order. The backends hand photos over unsorted, so this runs on
- *  load, whenever a datetime moves, and when the order itself is changed. */
+/** The order the list is held in. 'time' puts undated photos first, as the
+ *  to-do list, then sorts by time and by name; 'name' sorts by filename alone.
+ *  Re-applied on load, whenever a datetime moves, and when the mode changes. */
 let sortMode = 'time';
 export const sortModeName = () => sortMode;
 
-/** The one call that changes the order, so the mode has a single owner. */
+/** The one call that changes the order. */
 export function setSortMode(mode) {
   sortMode = mode === 'name' ? 'name' : 'time';
   sortPhotos();
@@ -206,14 +192,12 @@ export function sortPhotos() {
     || byName(a, b));
 }
 
-/** What a photo is still missing. Every view asks these questions, so they are
- *  answered once here rather than re-spelled as inline tests in each caller. */
+/** What a photo is still missing. */
 export const isUndated = (p) => !p.datetime;
 export const isUnplaced = (p) => p.lat == null;
 export const isTagged = (p) => !isUndated(p) && !isUnplaced(p);
 
-/** How much of the folder is finished. The top bar and the inspector both
- *  report this and must not disagree. */
+/** How much of the session is finished. */
 export function folderStats() {
   const total = state.photos.length;
   const done = state.photos.filter(isTagged).length;
@@ -226,9 +210,8 @@ export function folderStats() {
   };
 }
 
-/** The fields a user can edit. Everything that compares, snapshots, reverts or
- *  saves a photo derives from this list, so adding a field is a one-line change
- *  and the copies cannot drift apart. */
+/** The fields a user can edit. Comparing, snapshotting, reverting and saving a
+ *  photo all derive from this list. */
 export const EDITABLE = ['datetime', 'offset', 'lat', 'lon'];
 
 const pick = (p) => Object.fromEntries(EDITABLE.map((k) => [k, p[k]]));
@@ -241,9 +224,9 @@ export const markClasses = (base, p) =>
   [base, state.selection.has(p.id) ? 'sel' : '', isEdited(p) ? 'edited' : '']
     .filter(Boolean).join(' ');
 
-/** The same two markers, onto a node that already exists. Toggling rather than
- *  reassigning leaves whatever class a gesture put there (`drag`, `pulse`)
- *  alone, which is what makes a repaint safe mid-gesture. */
+/** The same two markers, onto a node that already exists. Toggling leaves
+ *  classes a gesture put there (`drag`, `pulse`) alone, so a repaint is safe
+ *  in the middle of one. */
 export const mark = (el, p) => {
   el.classList.toggle('sel', state.selection.has(p.id));
   el.classList.toggle('edited', isEdited(p));
@@ -252,13 +235,13 @@ export const mark = (el, p) => {
 /** Treat the photo's current values as saved, its new baseline. */
 export const rebase = (p) => { p.orig = pick(p); };
 
-/** Throw away the pending edits and return to the last baseline. */
+/** Discard the pending edits and restore the last baseline. */
 export const revertToBaseline = (p) => { Object.assign(p, p.orig); };
 
 export const resetHistory = () => { state.undo.length = 0; state.redo.length = 0; };
 
-/** Coordinates round-tripped through EXIF land near 1e-7 degrees anyway; keep
- *  values comparable so a no-op drag does not mark a photo as edited. */
+/** Coordinates at 1e-7 degrees, the precision an EXIF round-trip survives, so a
+ *  no-op drag does not read as an edit. */
 export const roundCoord = (v) => (v == null ? null : Math.round(v * 1e7) / 1e7);
 
 /* ── Undo ──────────────────────────────────────────────────────── */
@@ -277,21 +260,18 @@ function restore(snap) {
 
 function pushUndo(snap) {
   state.undo.push(snap);
-  // Snapshots cover every photo, so depth costs memory on large folders; 50
-  // steps is far more than interactive editing ever walks back.
+  // Snapshots cover every photo, so depth costs memory on a large folder.
   if (state.undo.length > 50) state.undo.shift();
   state.redo.length = 0;
 }
 
 /**
  * The only way photo fields change. `mutate` receives `photos`, anything
- * iterable, and edits them in place. everything around it (the undo snapshot,
- * the re-render) happens here, so no caller can get the order wrong or forget
- * a step.
+ * iterable, and edits them in place; the undo snapshot, the re-sort and the
+ * re-render all happen here.
  *
  * The journal keeps the snapshot only if a field moved, so a drag that ends
- * where it began costs no undo step. Returns how many photos changed, which is
- * what callers report in a toast.
+ * where it began costs no undo step. Returns how many photos changed.
  */
 export function applyEdit(photos, mutate) {
   const list = [...photos];

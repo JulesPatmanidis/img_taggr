@@ -8,7 +8,7 @@
  *                        ones, positioned by their timestamp
  *
  * Nearby pins merge into a cluster showing a count; clicking one zooms in, and
- * photos at the very same spot fan out so each can be picked or dragged.
+ * photos at identical coordinates are spiderfied so each can be picked or dragged.
  */
 
 import {
@@ -22,8 +22,8 @@ let map = null;
  *  only ever adds, updates and removes. */
 let markers = null;
 let cluster = null;
-/** Refreshing cluster icons folds a fanned-out cluster back up, which would
- *  snatch a pin away mid-click, so hold refreshes while one is open. */
+/** Whether a cluster is spiderfied. Refreshing cluster icons collapses it and
+ *  removes the pin under the pointer, so refreshes wait until this is false. */
 let fannedOut = false;
 let route = null;
 let showRoute = true;
@@ -34,10 +34,9 @@ export function initMap(el, opts = {}) {
   onReveal = opts.onReveal ?? onReveal;
   map = L.map(el, { zoomControl: false, attributionControl: true, worldCopyJump: true, maxZoom: 20 })
     .setView([30, 10], 2);
-  // Leaflet reads a 3px wobble between press and release as a pan and drops
-  // the click, so a slightly shaky click on the map placed nothing. Only the
-  // map's own drag gets the wider tolerance; marker drags keep Leaflet's.
-  // `_draggable` is private, but has its own options object in Leaflet 1.9.
+  // Leaflet treats more than 3px of movement between press and release as a
+  // pan and drops the click. Only the map's own drag gets the wider tolerance; `_draggable`
+  // is private, but has its own options object in Leaflet 1.9.
   map.dragging._draggable.options.clickTolerance = 10;
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   setBasemap(opts.basemap);
@@ -77,8 +76,7 @@ function placeAt(photos, latlng) {
   });
 }
 
-/* Neither needs a key or an account, so the page works for anyone who opens
-   it. (CARTO's styles were nicer but now demand a key.) */
+/* Basemaps that need no key or account. */
 const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const BASEMAPS = {
   map: () => [
@@ -114,7 +112,7 @@ export const basemapName = () => basemapKey;
 
 export function setShowRoute(v) { showRoute = v; render(); }
 
-/** Crosshair while a click would place photos, so a click never surprises. */
+/** Crosshair cursor while a click would place photos. */
 export function setPlacing(on) {
   map?.getContainer().classList.toggle('placing', on);
 }
@@ -170,8 +168,8 @@ function pinIcon(cls, thumb, label = '') {
 
 const icon = (p) => pinIcon(markClasses('pin', p), p.thumb);
 
-/** A cluster looks like a pin with a count, and carries the same selected and
- *  edited colours as any photo inside it, so nothing hides behind a merge. */
+/** A cluster looks like a pin with a count, and carries the selected and
+ *  edited colours of any photo inside it. */
 function clusterIcon(c) {
   const ids = new Set(c.getAllChildMarkers().map((m) => m.photoId));
   const photos = state.photos.filter((p) => ids.has(p.id));
@@ -179,8 +177,7 @@ function clusterIcon(c) {
   const cls = ['pin', 'cluster',
     picked ? 'sel' : '',
     photos.some(isEdited) ? 'edited' : ''].filter(Boolean).join(' ');
-  // A label rather than a corner badge: at a glance it says how many photos
-  // sit here and how many of them the selection has.
+  // The label gives the cluster's photo count and how many of them are selected.
   const label = picked && picked < ids.size ? `${ids.size} photos · ${picked} selected`
     : picked ? `${photoCount(ids.size)} selected`
       : photoCount(ids.size);
@@ -199,9 +196,9 @@ function paint(m, p) {
 
 /** Rigid-body drag state, captured on dragstart. */
 let drag = null;
-/** Id of the marker being dragged. Set before any render can run, so render()
- *  knows to leave that marker's icon and position alone, because swapping the icon of
- *  a marker mid-drag detaches the very element Leaflet is dragging. */
+/** Id of the marker being dragged, set before any render can run. render()
+ *  leaves its icon and position alone, since swapping a marker's icon mid-drag
+ *  detaches the element Leaflet is dragging. */
 let dragId = null;
 
 function makeMarker(p) {
@@ -210,18 +207,17 @@ function makeMarker(p) {
 
   m.on('dragstart', () => {
     dragId = p.id;
-    // Dragging a marker outside the current selection re-selects just that photo,
-    // matching how every file manager behaves.
+    // Dragging a marker outside the selection re-selects just that photo.
     if (!state.selection.has(p.id)) clickSelect(p.id);
     const group = selected().filter((q) => q.lat != null && q.id !== p.id);
     for (const q of group) {
-      // Tell the cluster plugin these are being dragged too, or it regroups
-      // them on every frame and folds up the fan under the pointer.
+      // Mark these as dragged for the cluster plugin, or it re-clusters them on
+      // every frame and collapses the spiderfied group.
       const mk = markers.get(q.id);
       if (mk) mk.__dragStart = mk.getLatLng();
     }
     drag = {
-      // Where the pin was drawn, which for a fanned-out pin is not its real spot.
+      // The drawn position, which for a spiderfied pin differs from its coordinates.
       from: m.getLatLng(),
       origin: { lat: p.lat, lon: p.lon },
       group: group.map((q) => ({ q, lat: q.lat, lon: q.lon })),
@@ -268,7 +264,7 @@ function makeMarker(p) {
   });
 
   m.on('dblclick', (e) => {
-    // Double-click means "find this in the timeline", not "zoom the map".
+    // Double-click reveals the photo in the timeline instead of zooming the map.
     L.DomEvent.stopPropagation(e);
     onReveal(p.id);
   });
@@ -290,8 +286,7 @@ function drawRoute(live) {
     if (route) { route.remove(); route = null; }
     return;
   }
-  // Reuse the polyline across drag frames rather than tearing down the SVG
-  // path 60 times a second.
+  // One polyline, reused across drag frames.
   if (route) {
     route.setLatLngs(pts);
   } else {
@@ -301,12 +296,12 @@ function drawRoute(live) {
   }
 }
 
-/** Put a pin where its photo says it is, unless a drag is already moving it. */
+/** Move a pin to its photo's coordinates, unless a drag is moving it. */
 function paintPin(m, p) {
   if (p.id === dragId) return;
   if (!drag) {
-    // A fanned-out pin sits at its spot in the fan, and the cluster plugin
-    // holds its real position aside.
+    // A spiderfied pin is drawn at its fan position; the plugin keeps its real
+    // coordinates in `_preSpiderfyLatlng`.
     const cur = m._preSpiderfyLatlng ?? m.getLatLng();
     if (cur.lat !== p.lat || cur.lng !== p.lon) m.setLatLng([p.lat, p.lon]);
   }
@@ -322,7 +317,7 @@ export function render(reason) {
   if (!isRepaint(reason)) drawRoute(false);
 }
 
-/** Photos dragged in from the filmstrip land where they are dropped. */
+/** Places photos dragged in from the filmstrip at the drop coordinates. */
 export const dropTarget = {
   hover(x, y) {
     const over = !!map && inside(x, y);
@@ -343,7 +338,7 @@ function inside(x, y) {
   return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 
-/** Bring these photos into view and pulse their pins so the eye finds them. */
+/** Pan to these photos and play the pulse animation on their pins. */
 export function reveal(ids) {
   if (!map) return;
   const pts = state.photos.filter((p) => ids.includes(p.id) && p.lat != null);
@@ -374,7 +369,7 @@ export function fit() {
 }
 
 /**
- * Fill in positions for photos that sit, in time, between two placed photos.
+ * Fill in positions for photos whose timestamps fall between two placed photos.
  * Returns a short report for the toast.
  */
 export function interpolate() {
@@ -385,8 +380,7 @@ export function interpolate() {
 
   const anchorIdx = timed.map((p, i) => (p.lat != null ? i : -1)).filter((i) => i >= 0);
   if (anchorIdx.length < 2) {
-    // Say *which* set came up short, or the message is baffling when the folder
-    // is well placed but the selection happens not to be.
+    // Name the set without enough placed photos: the selection, or all photos.
     return { ok: false, msg: state.selection.size >= 2
       ? 'Fewer than two of the selected photos have a location. Clear the selection to interpolate across the whole folder.'
       : 'Place at least two photos on the map first. Interpolation needs a route to follow.' };

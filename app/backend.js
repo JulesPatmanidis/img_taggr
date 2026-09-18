@@ -14,8 +14,6 @@
  *
  * Saving has one shape everywhere: the tagged files are written as a new set
  * into a folder of their own, and the sources are never opened for writing.
- * That is why there are no save modes left to choose between, and why photos
- * from any number of folders can sit in one session.
  *
  * Interface:
  *   id, envWarning()
@@ -39,16 +37,14 @@
  *                              `path` names the output folder outright,
  *                              `parent` only says what it will be made inside
  *   save(items, {outDir})   -> {results: [{path, ok, error}], destination}
- *                              destination says where the files landed,
- *                              which is not always where they were asked
- *                              to go (a browser without write access
- *                              downloads a ZIP instead).
+ *                              destination is where the files were written;
+ *                              a browser without write access downloads a
+ *                              ZIP instead of writing to the folder
  */
 
-/** Extensions the desktop picker offers. The browser asks the wasm engine for
- *  this list at runtime; the desktop dialog needs it before any engine call, so
- *  it is spelled out here and a test pins it to both `SUPPORTED` in
- *  `desktop/src/lib.rs` and `WRITABLE` in `engine/src/lib.rs`. */
+/** Extensions the desktop picker offers, pinned by a test to `SUPPORTED` in
+ *  `desktop/src/lib.rs` and `WRITABLE` in `engine/src/lib.rs`. The browser asks
+ *  the wasm engine instead. */
 export const IMAGE_EXTS = [
   'jpg', 'jpeg', 'heic', 'heif', 'png', 'tif', 'tiff', 'webp',
 ];
@@ -87,9 +83,8 @@ export async function freeNameIn(dir, name, taken) {
     try {
       await dir.getFileHandle(candidate);
     } catch (e) {
-      // Only "there is nothing here by that name" means the name is free. Any
-      // other refusal (a directory sits there, permission withdrawn) means it
-      // is taken as far as we are concerned.
+      // Only NotFoundError means the name is free. Any other error (a directory
+      // has that name, permission was revoked) counts as taken.
       if (e?.name === 'NotFoundError') {
         taken.add(candidate);
         return candidate;
@@ -110,9 +105,7 @@ function tauriBackend() {
   const invoke = window.__TAURI__.core.invoke;
   const dialog = window.__TAURI__.dialog;
 
-  /** Read a batch of sources. Folders and loose files go down the same path,
-   *  so picking a folder, dropping a mixture and adding one more photo are all
-   *  the same call. */
+  /** Read a batch of sources, each a folder or a loose file. */
   async function scan(paths) {
     const list = [paths].flat().filter(Boolean);
     if (!list.length) return null;
@@ -153,7 +146,7 @@ function tauriBackend() {
         else if (payload.type === 'leave') hover(false);
         else if (payload.type === 'drop') {
           hover(false);
-          // Folders and files can arrive in one drop; the scan sorts them out.
+          // One drop can contain folders and files; scan_paths handles both.
           if (payload.paths.length) drop(scan(payload.paths));
         }
       });
@@ -176,7 +169,7 @@ function tauriBackend() {
     },
 
     outputParent() {
-      return null; // the field already says where in full
+      return null; // the output field already holds the full path
     },
 
     async pickOutput() {
@@ -204,13 +197,12 @@ async function webBackend() {
   const wasm = await import('./wasm/img_taggr_wasm.js');
   await wasm.default('./wasm/img_taggr_wasm_bg.wasm');
 
-  // The engine is the authority on what it can write; the UI never keeps its
-  // own copy of the list, so the two cannot drift apart.
+  // The writable extensions come from the engine.
   const exts = wasm.writable_extensions().split(',');
   const extOf = (n) => (n.split('.').pop() || '').toLowerCase();
 
-  /** photo id -> File. Bytes are re-read on demand so a big folder does not
-   *  sit in memory; the File handle itself is cheap. */
+  /** photo id -> File. Bytes are re-read on demand rather than held in memory;
+   *  a File object holds no bytes itself. */
   const files = new Map();
   /** Directory handle when the browser supports writing back in place. */
   let outHandle = null;
@@ -226,8 +218,7 @@ async function webBackend() {
     try {
       meta = JSON.parse(wasm.read_meta(bytes, file.name) || '{}');
     } catch {
-      // A file we cannot parse still belongs in the list, since the user may be
-      // here precisely because its metadata is broken.
+      // A file with unparseable metadata still joins the list, with empty fields.
     }
     return {
       path: id,
@@ -246,10 +237,8 @@ async function webBackend() {
     };
   }
 
-  /** What makes two picked files the same photo. A browser gives no stable file
-   *  id, so identity is what the user can see: where it came from, how big it
-   *  is and when it was last written. Without this, adding the same folder
-   *  twice would load every photo twice over. */
+  /** What makes two picked files the same photo: relative path, size and mtime,
+   *  since a browser gives no stable file id. */
   const idOf = (f) => `${f.webkitRelativePath || f.name}|${f.size}|${f.lastModified}`;
 
   /** Read a set of files. Nothing about the session changes until the app calls
@@ -262,9 +251,7 @@ async function webBackend() {
       const id = idOf(f);
       if (found.has(id)) continue;
       const bytes = new Uint8Array(await f.arrayBuffer());
-      // Some files pass the extension check but could never be written back.
-      // Leaving them out here is kinder than accepting edits and failing at
-      // save, and they land in the unreadable count below.
+      // Files the engine could never write back count as unreadable.
       if (wasm.reject_reason(bytes, f.name)) continue;
       found.set(id, f);
       photos.push(describe(f, id, bytes));
@@ -275,9 +262,8 @@ async function webBackend() {
       unreadable: fileList.length - photos.length,
       activate() {
         for (const [id, f] of found) files.set(id, f);
-        // The first folder we hold a handle for is where a new output folder
-        // gets made. A later source never moves it, and neither does adding
-        // loose files, so the destination cannot shift under a half-done job.
+        // The first folder handle held is where the output folder is made;
+        // later sources never move it.
         if (handle && !outHandle) outHandle = handle;
       },
     };
@@ -307,8 +293,8 @@ async function webBackend() {
    *  waiting on it. */
   const PICK_GRACE_MS = 1200;
 
-  /** What a FileList from the input fallback becomes. A folder pick says where
-   *  it came from only in the relative path of its first file. */
+  /** Ingest a FileList from the input fallback. For a folder pick, the label is
+   *  the first segment of the first file's `webkitRelativePath`. */
   function fromInput(files, directory) {
     if (!files?.length) return null;
     const label = directory
@@ -373,9 +359,9 @@ async function webBackend() {
   }
 
   /**
-   * A drop, which can mix folders and loose files. The caller has already taken
-   * everything off the DataTransfer, because its items go dead the moment the
-   * event returns.
+   * Read a drop, which can mix folders and loose files. The caller has already
+   * copied everything off the DataTransfer, since its items are unreadable once
+   * the event handler returns.
    */
   async function readDrop(items) {
     const dirs = [];
@@ -395,8 +381,7 @@ async function webBackend() {
 
     const label = dirs.length === 1 && !loose.length ? dirs[0].name
       : dirs.length ? 'dropped folders' : 'dropped photos';
-    // Only an unambiguous single folder is worth keeping a handle for; with a
-    // mixture there is no one place the output belongs beside.
+    // Only a drop of exactly one folder keeps its handle.
     const handle = dirs.length === 1 && dirs[0].kind === 'directory' ? dirs[0] : null;
     return ingest(picked, label, handle);
   }
@@ -406,7 +391,7 @@ async function webBackend() {
     caps: {
       // Writing back to a folder needs the File System Access API.
       outputFolder: canWriteFiles,
-      // A browser never sees a path, only a folder it has been handed.
+      // A browser exposes directory handles, never filesystem paths.
       outputPaths: false,
     },
 
@@ -424,7 +409,7 @@ async function webBackend() {
         try {
           dir = await window.showDirectoryPicker({ mode: 'readwrite' });
         } catch {
-          return null; // user dismissed
+          return null; // dismissed or refused
         }
         return ingest(await filesIn(dir), dir.name, dir);
       }
@@ -441,10 +426,9 @@ async function webBackend() {
             types: [{ description: 'Images', accept: { 'image/*': exts.map((e) => `.${e}`) } }],
           });
         } catch {
-          return null; // user dismissed
+          return null; // dismissed or refused
         }
-        // Picking files hands over no folder, so this never sets a destination;
-        // whatever folder the session already had stays the one.
+        // Picked files come with no directory handle, so the output location is unchanged.
         return ingest(await Promise.all(handles.map((h) => h.getFile())), 'photos');
       }
 
@@ -471,8 +455,8 @@ async function webBackend() {
         e.preventDefault();
         depth = 0;
         hover(false);
-        // DataTransfer items go dead once the event returns, so take everything
-        // synchronously and resolve it afterwards.
+        // DataTransfer items are unreadable once the handler returns, so copy
+        // them synchronously and process them afterwards.
         drop(readDrop([...e.dataTransfer.items].filter((i) => i.kind === 'file').map((i) => ({
           handle: i.getAsFileSystemHandle?.().catch(() => null),
           entry: i.webkitGetAsEntry?.(),
@@ -559,8 +543,8 @@ async function webBackend() {
     },
 
     async save(items, { outDir }) {
-      // A dropped folder comes without write access; the Save click only counts
-      // as the gesture a permission prompt needs until the first slow await.
+      // A dropped folder has no write permission. Requesting it needs user
+      // activation, which the Save click provides only until the first await.
       let dest = outHandle;
       try {
         if (dest && await dest.requestPermission({ mode: 'readwrite' }) !== 'granted') dest = null;
@@ -612,8 +596,7 @@ async function webBackend() {
         }
       }
 
-      // The write landed, but not where the user asked. Say so, or the message
-      // names a folder they will not find the files in.
+      // Report the ZIP, not the folder that was asked for.
       const zip = `${folder}.zip`;
       const taken = new Set();
       downloadZip(written.map((w) => ({ ...w, name: freeName(w.name, taken) })), zip);
@@ -623,8 +606,7 @@ async function webBackend() {
 }
 
 /* ── Minimal store-only ZIP ────────────────────────────────────── */
-/* Images are already compressed, so storing costs nothing and avoids pulling
-   in a compression library for the download fallback. */
+/* Entries are stored uncompressed, since images already are. */
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -642,8 +624,8 @@ function crc32(buf) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** ZIP stores timestamps as DOS date/time words; leaving them zero makes
- *  extracted files claim to be from 1980 (or worse, after normalisation). */
+/** The current time as DOS date and time words, the ZIP timestamp format. Zero
+ *  words would give extracted files a 1980 timestamp. */
 function dosTime() {
   const d = new Date();
   const time = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() / 2) & 31);

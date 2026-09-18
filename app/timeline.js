@@ -9,10 +9,9 @@
  *   drag the axis        pan
  *
  * When the dragged photo belongs to a multi-photo selection, the *whole
- * selection shifts by the same delta* and the intervals between shots survive.
- * That repairs a camera clock set wrong for an entire trip, which is the
- * failure people bring these photos in with. Hold Alt to move a single photo
- * out of formation instead.
+ * selection shifts by the same delta* and the intervals between shots survive,
+ * so a camera clock set wrong for a whole trip is one drag. Hold Alt to move a
+ * single photo out of formation instead.
  */
 
 import {
@@ -45,8 +44,7 @@ let drag = null;
 /** A drag coming in from the filmstrip, previewed but not yet dropped. */
 let incoming = null;
 
-/** Chip footprint and row geometry, derived from the --chip CSS variable so
- *  size stays defined in exactly one place. */
+/** Chip footprint and row geometry, derived from the --chip CSS variable. */
 function metrics() {
   const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chip'));
   const chip = Number.isFinite(px) && px > 0 ? px : 50;
@@ -100,7 +98,7 @@ export function fit() {
   render();
 }
 
-/** Bring these photos into view and pulse their chips so the eye finds them. */
+/** Scroll to these photos and play the pulse animation on their chips. */
 export function reveal(ids) {
   const ms = state.photos.filter((p) => ids.includes(p.id) && p.datetime).map((p) => dtToMs(p.datetime));
   if (!ms.length || !els.track) return;
@@ -129,9 +127,8 @@ function renderSoon() {
 
 export function render(reason) {
   if (!els.track) return;
-  // Selection and thumbnails change how a chip looks, never where it sits, so
-  // patch the chips and leave the layout, the grid and the axis alone. That is
-  // also why a repaint is safe in the middle of a drag, when a re-layout is not.
+  // Selection and thumbnails change how a chip looks, never its position, so
+  // patch the chips and leave the layout alone. Safe mid-drag; a re-layout is not.
   if (isRepaint(reason)) { repaint(); syncSpread(); return; }
   if (drag) return;
   const W = els.track.clientWidth;
@@ -151,10 +148,8 @@ export function render(reason) {
     .sort((a, b) => a.ms - b.ms || a.p.name.localeCompare(b.p.name, undefined, { numeric: true }));
 
   // Rows: a photo that would overlap the one before it steps one row down, and
-  // a clear gap starts again at the top. Earliest is always on top, so a
-  // burst reads as a staircase and nothing jumps rows for no visible reason.
-  // A burst deeper than the track piles up on the bottom row rather than
-  // wrapping back over the photos at the top.
+  // a clear gap starts again at the top, so a burst is drawn as a descending
+  // diagonal. Photos past the last row are drawn on the last row.
   let prevX = -Infinity;
   let step = 0;
   for (const d of dated) {
@@ -193,8 +188,7 @@ function syncSpread() {
 
 /**
  * Put the selected photos at equal intervals between the first and the last,
- * keeping both ends where they are. The common case is a burst dropped on one
- * spot, or a roll dated by hand at both ends and left bunched in between.
+ * keeping both ends where they are.
  */
 function spreadSelection() {
   const list = selected().filter((p) => p.datetime)
@@ -213,11 +207,9 @@ function spreadSelection() {
 
 /* ── Dating a whole batch ──────────────────────────────────────── */
 
-/**
- * Scanned film has no timestamps but keeps its shot order in the filename, so
- * a start time and one interval is enough to date the whole roll. It is a
- * starting point, not a claim: every photo can still be dragged afterwards.
- */
+/* A start time and one interval date every undated photo, in filename order.
+   Each photo can still be dragged afterwards. */
+/** Whether the start time has been edited by hand. */
 let batchTouched = false;
 /** The session the start time was seeded for, so a new folder re-seeds it. */
 let batchSession = null;
@@ -293,9 +285,8 @@ function applyBatch() {
 }
 
 /**
- * The other honest starting point: a scan's file timestamp is usually when it
- * was scanned, not when it was shot, but it is in the right order and can be
- * shifted as a group afterwards.
+ * Seed the batch from file timestamps: usually the scan time rather than the
+ * shot time, but in the right order.
  */
 function seedFromFiles() {
   const list = undatedPhotos().filter((p) => p.file_modified);
@@ -317,9 +308,9 @@ function repaint() {
 }
 
 /**
- * The panel offers bulk dating for as long as anything is undated. With nothing on
- * the track it takes the whole pane, as the empty state; once there are chips
- * under it, it waits behind a header button so it cannot hide them.
+ * The bulk dating panel, shown while any photo is undated. With no chips on the
+ * track it fills the pane as the empty state; otherwise it is collapsed behind
+ * a header button so it does not cover the chips.
  */
 function showBatch(nDated) {
   const undated = state.photos.filter(isUndated).length;
@@ -342,7 +333,7 @@ function showBatch(nDated) {
   els.batchSeed.disabled = !state.photos.some((p) => isUndated(p) && p.file_modified);
 }
 
-/** The stand-in shown when there is no folder at all. */
+/** The placeholder shown when no photos are loaded. */
 function showEmpty(noFolder) {
   const msg = els.track.querySelector('.tlEmpty');
   if (!noFolder) { msg?.remove(); return; }
@@ -358,8 +349,8 @@ function chipEl() {
 }
 
 function placeChip(el, { p, x, top }) {
-  // Assigning the class wholesale also clears the transient `drag` and `pulse`
-  // markers a previous gesture left behind.
+  // Assigning className also removes the `drag` and `pulse` classes set by a
+  // previous gesture.
   el.className = markClasses('chip', p);
   el.dataset.id = p.id;
   el.title = `${p.name}\n${p.datetime.replace('T', ' ')}`;
@@ -604,8 +595,7 @@ function moveBox(ev) {
   Object.assign(box.style, {
     left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px`,
   });
-  // Highlight live, but only tell the rest of the app when the box is let go:
-  // re-rendering the map on every pointer move is far too much work.
+  // Highlight during the drag; emit the selection change only on release.
   drag.hits = new Set();
   for (const [id, el] of chips.entries()) {
     const c = el.getBoundingClientRect();
@@ -654,9 +644,9 @@ export function shiftSelection(sec) {
 /* ── Drops from the filmstrip ──────────────────────────────────── */
 
 /**
- * Dated photos keep their spacing and move so the grabbed photo (or, if that
- * one has no date, the earliest dated one) lands on the pointer. Undated
- * photos land exactly at the pointer, ready to be spread out.
+ * Dated photos keep their spacing and shift so the grabbed photo (or, if it has
+ * no date, the earliest dated one) takes the time under the pointer. Undated
+ * photos all take the time under the pointer.
  */
 function planDrop(x, ids, grabbed) {
   const target = snap(msAtClient(x));
@@ -714,7 +704,7 @@ export const dropTarget = {
 let dropline = null;
 
 /** Vertical guide at the exact landing point, labelled with the resulting
- *  time. Reading the target off the cursor beats hunting for it in a corner. */
+ *  time. */
 function showDrop(x, timeLabel, note) {
   if (!dropline) {
     dropline = document.createElement('div');
@@ -723,8 +713,8 @@ function showDrop(x, timeLabel, note) {
   }
   if (dropline.parentElement !== els.track) els.track.appendChild(dropline);
   dropline.style.left = `${x}px`;
-  // The dragged chip straddles the line, so the labels sit beside it, on
-  // whichever side has room.
+  // The dragged chip is centred on the line, so the labels go beside it, on
+  // whichever side has space.
   dropline.classList.toggle('flip', x > els.track.clientWidth - 200);
   dropline.querySelector('.lab').textContent = timeLabel;
   const n = dropline.querySelector('.note');

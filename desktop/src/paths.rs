@@ -1,6 +1,4 @@
-//! Output-path helpers. Kept apart from the Tauri command layer so the rules
-//! that decide *where a file lands* stand on their own, so these run in
-//! the one code path that touches the user's disk.
+//! Output-path helpers.
 
 use std::path::{Path, PathBuf};
 
@@ -24,15 +22,12 @@ fn candidates(dir: &Path, src: &Path) -> impl Iterator<Item = PathBuf> {
     })
 }
 
-/// Claim a destination inside `dir` for `src`'s filename, never overwriting an
-/// existing file, and return the empty file now standing in that spot.
+/// Create an empty file in `dir` named after `src`, adding a counter when the
+/// name exists, and return its path. Never overwrites an existing file.
 ///
-/// The claim is the `create_new` itself, not a check before it. Saves run in
-/// parallel and photos can come from several folders, so two threads can be
-/// copying two different `IMG_0001.jpg` at once. Asking `exists()` first and
-/// copying afterwards leaves a window in which both see the name free and one
-/// silently overwrites the other; `create_new` fails for the loser instead, and
-/// it moves on to the next candidate.
+/// Uses `create_new` rather than an existence check, so concurrent calls for
+/// the same name create distinct files: a call that gets `AlreadyExists` tries
+/// the next candidate.
 pub fn create_dest(dir: &Path, src: &Path) -> std::io::Result<PathBuf> {
     for candidate in candidates(dir, src) {
         match std::fs::OpenOptions::new()
@@ -53,12 +48,8 @@ pub fn create_dest(dir: &Path, src: &Path) -> std::io::Result<PathBuf> {
     ))
 }
 
-/// The deepest directory that contains every one of `dirs`. Photos can now be
-/// added from anywhere, so the output folder is suggested next to whatever
-/// holds them all rather than next to only the first source.
-///
-/// `None` when they share nothing, which is what a mix of relative paths or of
-/// two Windows drives looks like.
+/// The deepest directory that contains every one of `dirs`, or `None` when they
+/// share nothing (a mix of relative paths, or two Windows drives).
 pub fn common_root(dirs: &[PathBuf]) -> Option<PathBuf> {
     let mut rest = dirs.iter();
     let mut root = rest.next()?.clone();
@@ -98,8 +89,8 @@ mod tests {
         v.iter().map(PathBuf::from).collect()
     }
 
-    /// The name `create_dest` would claim, without touching a disk: the naming
-    /// rule on its own, separate from the claiming.
+    /// The path `create_dest` would create, computed without touching the
+    /// filesystem.
     fn dest_for_with(dir: &Path, src: &Path, taken: impl Fn(&Path) -> bool) -> PathBuf {
         candidates(dir, src)
             .find(|p| !taken(p))
@@ -180,7 +171,7 @@ mod tests {
         assert_eq!(root_of(&["/home/me/trip", "/home/you/scans"]).as_deref(), Some("/home"));
     }
 
-    /// A scratch folder that cleans up after itself.
+    /// A temporary folder, deleted on drop.
     struct Scratch(PathBuf);
     impl Scratch {
         fn new(tag: &str) -> Self {

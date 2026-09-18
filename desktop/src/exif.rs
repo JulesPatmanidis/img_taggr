@@ -1,8 +1,7 @@
 //! Desktop file I/O around the shared metadata engine.
 //!
-//! There is no second implementation here: reading and writing both go through
-//! `img_taggr_core`, the same code the browser build runs. This file only deals
-//! with what a browser cannot do, touching the filesystem.
+//! Reading and writing both go through `img_taggr_core`, the same code the
+//! browser build runs. This file only touches the filesystem around it.
 
 use img_taggr_core as core;
 use rayon::prelude::*;
@@ -57,9 +56,7 @@ fn modified_at(path: &Path) -> Option<String> {
 fn read_one(path: &Path) -> Option<Photo> {
     let bytes = std::fs::read(path).ok()?;
     let name = path.file_name()?.to_string_lossy().into_owned();
-    // A file the engine could never write is dropped here rather than at save,
-    // so it counts as unreadable in the scan result instead of accepting edits
-    // that would fail.
+    // A file the engine could never write counts as unreadable.
     core::reject_reason(&bytes, &name).is_none().then_some(())?;
     let m = core::read_meta(&bytes, &name);
     Some(Photo {

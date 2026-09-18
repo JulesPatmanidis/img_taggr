@@ -14,7 +14,7 @@ export function store(key, value) {
 /**
  * A drag handle for resizing panes. `move(e)` runs on every pointermove;
  * `frame()` runs at most once per animation frame while dragging, and once at
- * the end, since re-laying out the views per pointermove is too much work.
+ * the end.
  */
 export function dragHandle(handle, { move, frame, end = () => {} }) {
   handle.addEventListener('pointerdown', (ev) => {
@@ -40,8 +40,8 @@ export function dragHandle(handle, { move, frame, end = () => {} }) {
 /* ── Keyed lists ───────────────────────────────────────────────── */
 
 /** How a keyed list adds, removes and locates its nodes inside a container
- *  element. Anything that is not an element supplies its own version of this,
- *  which is how the Leaflet layer group and the tests plug in. */
+ *  element. A host that is not an element (the Leaflet layer group, the tests)
+ *  supplies its own. */
 const childOps = (el) => ({
   insert: (node, before) => el.insertBefore(node, before),
   remove: (node) => node.remove(),
@@ -51,14 +51,13 @@ const childOps = (el) => ({
 /**
  * Keeps a container in step with a keyed sequence: creates what is new,
  * updates what stayed, removes what left, and puts the nodes in item order.
- * The nodes live in here, so the data never has to carry its own view.
+ * Nodes are stored in the list, never on the items.
  *
  * `host` is a container element, or an ops object for a collection that is not
  * a DOM parent. Ordering happens only when ops can report a node's position,
  * so a host without `after` (the map's clusters) is left unordered.
  *
- * `update` is called for new and surviving nodes alike, so it is the only
- * place that has to know how an item is painted.
+ * `update` runs for new and surviving nodes alike.
  */
 export function keyedList(host, { key = (it) => it.id, create, update = () => {} }) {
   const ops = typeof host.insert === 'function' ? host : childOps(host);

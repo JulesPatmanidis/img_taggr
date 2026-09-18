@@ -42,8 +42,7 @@ export function toggleMax(pane) {
   resizeViews();
 }
 
-/** Bring back whichever pane is about to be used. A maximised pane hides the
- *  other one, which is exactly what was asked for. */
+/** Bring back whichever pane is about to be used, leaving the stage split. */
 export function show({ map = false, time = false }) {
   if (map && maxed === 'time') toggleMax('time');
   if (time && maxed === 'map') toggleMax('map');

@@ -2,8 +2,7 @@
  *
  * Sorted by capture time with undated photos first, so the top of the list is
  * what still needs doing. Filters narrow it to what is missing a date or a
- * location. Cards drag straight onto the map or the timeline; the views are
- * only places to drop them.
+ * location. Cards drag straight onto the map or the timeline.
  *
  * It is also the keyboard's way to photos: one card at a time takes Tab focus,
  * ↑ ↓ Home End move and select (Shift extends, Ctrl only moves), and Enter or
@@ -31,13 +30,13 @@ let filter = 'all';
 /** Typed into the filename box; narrows the list on top of the filter. */
 let query = '';
 let lastClicked = null;
-/** The card that takes Tab focus, so returning to the list lands where you were. */
+/** The card that takes Tab focus, so tabbing back into the list focuses it again. */
 let cursor = null;
 let opts = {};
-/** photo id -> card element. The cards live here, not on the photo records. */
+/** photo id -> card element. Cards are stored here, not on the photo records. */
 let cards = null;
 
-/** What the filter and the search box agree to show, in list order. */
+/** Whether a photo passes both the filter and the search box. */
 const matches = (p) =>
   FILTERS[filter](p) && (!query || p.name.toLowerCase().includes(query));
 const visible = () => state.photos.filter(matches);
@@ -71,9 +70,7 @@ export function initStrip(options) {
 
 /**
  * Settle the list after photos arrive or the session is emptied. The cards
- * themselves are built by sync(); `reset` throws the existing ones away, which
- * only an emptied session needs, since adding photos leaves the cards that are
- * already up exactly as they are.
+ * themselves are built by sync(); `reset` removes the existing cards first.
  */
 export function build({ reset = false } = {}) {
   if (reset) cards.clear();
@@ -119,13 +116,12 @@ export function sync() {
   const shownIds = visible().map((p) => p.id);
   const tabStop = shownIds.includes(cursor) ? cursor
     : shownIds.find((id) => state.selection.has(id)) ?? shownIds[0];
-  // Every photo keeps a card; the filter only hides them, so the list stays in
-  // capture order and a filter change costs no DOM.
+  // Every photo keeps a card; the filter only hides them.
   cards.sync(state.photos, { show: matches, tabStop });
 
   const n = state.photos.length;
   const undated = state.photos.filter(FILTERS.undated).length;
-  // Chip counts ignore the search box: they describe the folder, not the query.
+  // Chip counts ignore the search box: they count all photos, not the matches.
   const counts = Object.fromEntries(
     Object.entries(FILTERS).map(([k, f]) => [k, state.photos.filter(f).length]));
   for (const b of $('stripFilters').querySelectorAll('[data-filter]')) {
@@ -161,8 +157,7 @@ function initSearch() {
   });
 }
 
-/* Two orders are worth having: the capture order the app works in, and the
-   filename order a scanned roll was shot in. */
+/** The sort menu: capture order, or filename order. */
 function initSort() {
   const menu = $('sortMenu');
   const items = () => [...menu.querySelectorAll('[data-sort]')];
@@ -184,8 +179,7 @@ function initSort() {
     setSort(b.dataset.sort);
     open(false);
   });
-  // A menu you can open with the keyboard has to be navigable and escapable
-  // with it too, or the focus lands somewhere it cannot leave.
+  // Arrows, Home and End move through the open menu, Escape and Tab close it.
   menu.addEventListener('keydown', (ev) => {
     ev.stopPropagation();
     const list = items();
@@ -290,8 +284,7 @@ function onPointerMove(ev) {
   if (!press) return;
   if (!drag) {
     if (Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < 6) return;
-    // Dragging a card outside the selection takes just that card, as in any
-    // file manager.
+    // Dragging a card outside the selection takes just that card.
     if (!state.selection.has(press.id)) {
       clickSelect(press.id);
       lastClicked = press.id;
@@ -332,8 +325,7 @@ function ghostFor(ids, grabbed) {
 }
 
 /* ── Sizing ────────────────────────────────────────────────────── */
-/* One drag handle instead of a size menu: "too small" depends on the screen,
-   and the thumbnails scale with the panel, so widening it shows more. */
+/* The panel is sized by a drag handle, and its thumbnails scale with it. */
 const MIN_STRIP = 180;
 const MAX_STRIP = 460;
 
