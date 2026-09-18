@@ -178,8 +178,7 @@ async function webBackend() {
   const previews = new Map();
   const canWriteFiles = typeof window.showDirectoryPicker === 'function';
 
-  async function describe(file, id) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+  function describe(file, id, bytes) {
     let meta = {};
     try {
       meta = JSON.parse(wasm.read_meta(bytes, file.name) || '{}');
@@ -215,13 +214,18 @@ async function webBackend() {
       // webkitRelativePath keeps folder structure visible and ids unique; a
       // plain multi-file pick has none, so fall back to a counter.
       const id = f.webkitRelativePath || `${f.name}#${seq++}`;
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      // Some files pass the extension check but could never be written back.
+      // Leaving them out here is kinder than accepting edits and failing at
+      // save, and they land in the unreadable count below.
+      if (wasm.reject_reason(bytes, f.name)) continue;
       found.set(id, f);
-      photos.push(await describe(f, id));
+      photos.push(describe(f, id, bytes));
     }
     return {
       label,
       photos,
-      unreadable: fileList.length - accepted.length,
+      unreadable: fileList.length - photos.length,
       activate() {
         files.clear();
         for (const [id, f] of found) files.set(id, f);

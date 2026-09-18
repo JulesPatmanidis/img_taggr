@@ -19,6 +19,14 @@ pub fn writable_extensions() -> String {
     core::WRITABLE.join(",")
 }
 
+/// Why this file cannot be tagged, or `undefined` if it can. The importer calls
+/// it once it has the bytes, so a file that could never be saved never reaches
+/// the list.
+#[wasm_bindgen]
+pub fn reject_reason(bytes: &[u8], filename: &str) -> Option<String> {
+    core::reject_reason(bytes, filename).map(str::to_owned)
+}
+
 /// Read the fields the UI needs, as JSON. `{}` means "nothing readable here",
 /// which is a normal state rather than an error.
 #[wasm_bindgen]

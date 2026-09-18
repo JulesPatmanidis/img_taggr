@@ -23,6 +23,26 @@ export function read_meta(bytes, filename) {
 }
 
 /**
+ * Why this file cannot be tagged, or `undefined` if it can.
+ * @param {Uint8Array} bytes
+ * @param {string} filename
+ * @returns {string | undefined}
+ */
+export function reject_reason(bytes, filename) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(filename, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.reject_reason(ptr0, len0, ptr1, len1);
+    let v3;
+    if (ret[0] !== 0) {
+        v3 = getStringFromWasm0(ret[0], ret[1]);
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v3;
+}
+
+/**
  * True if this engine can write metadata for the given filename.
  * @param {string} filename
  * @returns {boolean}

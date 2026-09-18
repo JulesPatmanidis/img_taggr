@@ -44,6 +44,20 @@ pub fn supported(filename: &str) -> bool {
     WRITABLE.contains(&ext_of(filename).as_str())
 }
 
+/// Why this file cannot be tagged, or `None` if it can.
+pub fn reject_reason(bytes: &[u8], filename: &str) -> Option<&'static str> {
+    // WebP has two containers. Only the extended one (a `VP8X` chunk) has
+    // anywhere to put EXIF, and little_exif cannot rewrite a simple file into
+    // the extended form. A simple `VP8L` converts fine so `VP8` is the single
+    // unsupported case.
+    if matches!(file_type(bytes, filename), Some(FileExtension::WEBP))
+        && bytes.get(12..16) == Some(b"VP8 ")
+    {
+        return Some("simple-format WebP has nowhere to store EXIF");
+    }
+    None
+}
+
 /// Canonical extension for a detected format, matching what exiftool's
 /// -FileTypeExtension reports so both backends label a file the same way.
 pub fn ext_label(ft: FileExtension) -> &'static str {
@@ -302,5 +316,32 @@ mod tests {
         for no in ["x.cr2", "y.nef", "z.arw", "w.dng", "v.gif", "noextension"] {
             assert!(!supported(no), "{no} should not be supported");
         }
+    }
+
+    /// A RIFF/WEBP header with the given fourCC at offset 12, which is all
+    /// `reject_reason` looks at.
+    fn webp(fourcc: &[u8; 4]) -> Vec<u8> {
+        let mut v = b"RIFF\x00\x00\x00\x00WEBP".to_vec();
+        v.extend_from_slice(fourcc);
+        v
+    }
+
+    #[test]
+    fn only_the_simple_vp8_webp_is_refused() {
+        assert!(reject_reason(&webp(b"VP8 "), "a.webp").is_some());
+        // Lossless simple files convert, and an extended file already has the
+        // chunk EXIF lives in, lossy image data or not.
+        assert!(reject_reason(&webp(b"VP8L"), "b.webp").is_none());
+        assert!(reject_reason(&webp(b"VP8X"), "c.webp").is_none());
+    }
+
+    #[test]
+    fn reject_reason_passes_every_other_format_and_short_files() {
+        assert!(reject_reason(b"\xff\xd8\xffsomething", "a.jpg").is_none());
+        // A `VP8 ` sequence only means anything inside a WebP.
+        assert!(reject_reason(b"\xff\xd8\xffVP8 more", "a.jpg").is_none());
+        // Truncated headers must not panic on the slice.
+        assert!(reject_reason(b"RIFF", "a.webp").is_none());
+        assert!(reject_reason(b"", "a.webp").is_none());
     }
 }

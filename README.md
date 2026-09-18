@@ -1,51 +1,41 @@
-# img-taggr
+# img-taggr - Image location and time metadata editor
 
-Edit photo **time, date and location** metadata through a **map** and a
-**timeline** view.
-
-Scanned film comes back with no EXIF at all. A camera with the wrong clock
-stamps a whole trip an hour out. Fixing either one photo at a time is the
-problem this solves: you place two shots on a map and interpolate the walk
-between them, or drag a whole selection along the timeline and keep the
-intervals intact.
-
-Runs two ways from one codebase, as a website with no server or as a desktop
-app.
+**img-taggr** is an image **time, date and location** metadata editor, available
+as a static site or a standalone desktop app. Set the date and location of your images by placing
+them on an interactive map and a timeline, which makes tagging a whole folder
+at once quick.
 
 **[Try it in your browser](https://julespatmanidis.github.io/img_taggr/)** (no
 install, no upload, the photos stay on your machine)
 
 <img src="docs/imgs/placed.png" width="820" alt="img-taggr with photos placed on the map and dated on the timeline">
 
-> **Status:** early. Version 0.1.0, Linux desktop and Chromium browsers are what
-> gets used daily. The default save mode writes copies and never touches your
-> originals, but back up anything irreplaceable before pointing a metadata
-> editor at it.
-
 ## Formats
 
-| Format | Read | Write | Thumbnail |
-|---|---|---|---|
-| JPEG, PNG | yes | yes | yes |
-| WebP (lossless) | yes | yes | yes |
-| TIFF, HEIC/HEIF | yes | yes | no (see below) |
-| RAW, lossy WebP | no | no | no |
+| Format | Read | Write | Thumbnail (desktop) | Thumbnail (web) |
+|---|---|---|---|---|
+| JPEG, PNG | yes | yes | yes | yes |
+| WebP, lossless or extended | yes | yes | yes | yes |
+| WebP, simple lossy (`VP8 `) | no | no | no | no |
+| TIFF | yes | yes | yes | no |
+| HEIC/HEIF | yes | yes | no | Safari only |
+| RAW | no | no | no | no |
 
-HEIC and TIFF have no thumbnails, since neither the browser nor the `image`
-crate can decode them. Safari decodes HEIC on its own in the web build.
+RAW files and simple-format lossy WebP are not supported and skipped at import.
 
 ## Quickstart
 
 ### Web
 
-The compiled engine is committed, so running it needs nothing but Python:
+This repository includes an already compiled backend for the app in
+WebAssembly, so running it needs nothing but Python to serve it locally:
 
 ```
 ./dev-server.py      # serves app/ on http://localhost:8080
 ```
 
-Use the plain `python3 -m http.server` instead and save-to-folder breaks, so
-prefer this one (`dev-server.py` explains why in its docstring).
+Use this script rather than `python3 -m http.server`. The stock server sends no
+cache headers so after edits to the source code the browser might use a stale cached file.
 
 To rebuild the engine after changing the Rust code you need
 [Rust](https://rustup.rs) and [Node](https://nodejs.org):
@@ -57,17 +47,12 @@ cargo install wasm-bindgen-cli --version 0.2.128
 npm run web          # rebuilds the wasm, then serves app/
 ```
 
-Open a folder with the button or by dropping it onto the window. Chrome and Edge
-can save straight back to a folder via the File System Access API. Other
-browsers download a ZIP instead (the app detects this and relabels the save
-dialog accordingly).
-
 To deploy, publish `app/` as static files. There is no server side. The
 included GitHub Actions workflow does exactly that on every push to `main`.
 
 ### Desktop
 
-Linux only so far. macOS and Windows are untried, and reports are welcome.
+Linux only so far. macOS and Windows are not tested, and reports are welcome.
 Nothing to install at runtime, since the metadata engine is compiled in.
 Building needs [Rust](https://rustup.rs), [Node](https://nodejs.org) and the
 Tauri system libraries:
@@ -82,25 +67,22 @@ npm run build        # .deb / .rpm / AppImage in desktop/target/release/bundle
 
 Debian/Ubuntu: `libwebkit2gtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`.
 
-There are no prebuilt binaries yet, so the desktop app is build-from-source for
-now.
-
-## What it does
+## Features
 
 **Map.** Photos with coordinates appear as pins, joined by a dashed route in
 time order. Nearby pins merge into a numbered cluster, and photos sitting on
 the very same spot fan out when you click them.
 
-- Search for a place to fly there. Search only moves the map.
-- Click the map to place every selected photo there (the cursor turns into a
-  crosshair while a click would do that), or drop photos from the list.
-- Drag a pin to move it. If it belongs to a multi-photo selection, the whole
-  selection moves rigidly, keeping its shape.
+- Click and place, or drag and drop images on the map to set their latitude and longitude.
+- Select multiple images from the list to place them in bulk.
+- Drag placed images to move them. If an image belongs to a multi-photo selection, the whole
+  selection moves together, keeping its shape.
+- Search for a place to move the map-view there.
 - Switch between the street map and satellite imagery.
 - **Interpolate route** positions un-placed photos along the line between placed
   ones, using their timestamps. Place the first and last shot of a walk and the
   rest fall into place. Photos outside the placed time range are left alone and
-  reported, never guessed at.
+  reported, never guessed at. This is experimental.
 
 **Timeline.** One continuous track across the whole set, with day boundaries
 marked. Scroll to pan, Ctrl+scroll (or pinch) to zoom, **Fit all** to see
@@ -114,18 +96,15 @@ everything.
 - Drop undated photos from the list to date them.
 - **Distribute evenly** spaces the selected photos at equal intervals between
   the first and the last, which untangles a burst dropped on one spot.
-- Shots that would overlap step down one row each, earliest on top.
 
-**Batch dating.** A folder of scans opens with nothing dated and nothing placed.
-**Date this batch** takes a start time and one interval and dates the whole roll
-in filename order, which is the order it was shot in.
+The **Date this batch** option after importing images takes a start time and one
+interval and dates the whole folder in filename order.
 
 <img src="docs/imgs/first-run.png" width="820" alt="A freshly opened folder, nothing dated or placed yet">
 
 ## Editing model
 
-Wall-clock time and UTC offset are **separate fields**, so correcting one never
-silently moves the other.
+Wall-clock time and UTC offset are **separate fields**.
 
 The inspector on the right edits the selection in place. Date and time are one
 `YYYY-MM-DD HH:MM:SS` field. On a mixed selection, changing only the date leaves
@@ -133,38 +112,41 @@ each photo its own time. **Shift by** takes `+3h47m`, `-15s` or `-0:15` and
 moves every selected photo.
 
 Tags written: `DateTimeOriginal`, `CreateDate`, `ModifyDate`, `OffsetTime*`, and
-`GPSLatitude`/`GPSLongitude` with their hemisphere refs. Every other tag in the
-file is left as it was.
+`GPSLatitude`/`GPSLongitude` with their hemisphere refs. Every other tag is left
+as it was, with two exceptions. 
+
+TIFF also gets `XResolution`, `YResolution` and
+`ResolutionUnit`, which it will not write without. And if a file's existing EXIF
+block cannot be parsed at all, which is common in scanner output, it is replaced
+with a fresh one rather than the file being refused, so that file keeps only the
+tags listed above.
 
 ## Saving
 
 The app stages every change in memory and writes nothing until you press
-**Save**. Amber dots show what is still pending, and Ctrl+Z unwinds anything
+**Save**. Amber dots show what is still pending. You can undo with Ctrl+Z to unwind anything
 not yet written.
 
-Three save modes, with the non-destructive one selected by default:
+Three save modes:
 
 | Mode | What it does |
 |---|---|
-| **Write copies** (default) | Tagged files go to a new folder. Originals never opened for writing. |
-| **Edit in place, keep backups** | Each original is preserved as `name.ext_original`, the same convention exiftool uses. |
+| **Write copies** (default) | Tagged files go to a new folder. Originals are left unchanged. |
+| **Edit in place, keep backups** | Each original is preserved as `name.ext_original` (exiftool convention). |
 | **Edit in place** | Overwrites originals. No undo once written. |
 
-The web build only offers copies, because the browser never holds the
-originals.
+The web build only offers copies because the browser has no direct access to the filesystem.
+
+Copy mode is the default, but it is still a good idea to back up anything irreplaceable before editing them.
 
 ## Privacy
 
 Photos are read locally and never uploaded. There is no server, no account and
 no telemetry, in either build.
 
-One exception, stated plainly: the place search box sends what you type to
-[photon.komoot.io](https://photon.komoot.io) to turn it into coordinates. It
-sends the query text only, never a photo or a coordinate from your set, and
-nothing happens until you type in that box.
+The place search box sends what you type to [photon.komoot.io](https://photon.komoot.io) to turn it into coordinates.
 
-Map tiles are fetched from their providers as you pan, which is a normal map
-request and reveals the area you are looking at, as any map does.
+Map tiles are fetched from their providers as you pan.
 
 ## Keyboard
 

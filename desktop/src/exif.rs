@@ -57,6 +57,10 @@ fn modified_at(path: &Path) -> Option<String> {
 fn read_one(path: &Path) -> Option<Photo> {
     let bytes = std::fs::read(path).ok()?;
     let name = path.file_name()?.to_string_lossy().into_owned();
+    // A file the engine could never write is dropped here rather than at save,
+    // so it counts as unreadable in the scan result instead of accepting edits
+    // that would fail.
+    core::reject_reason(&bytes, &name).is_none().then_some(())?;
     let m = core::read_meta(&bytes, &name);
     Some(Photo {
         ext: if m.ext.is_empty() {
